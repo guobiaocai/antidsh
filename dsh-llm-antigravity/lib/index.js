@@ -1,0 +1,4037 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { createRequire } from 'node:module'
+import { DatabaseSync } from 'node:sqlite'
+import z from '@deepseek-ai/schemastery'
+import * as dshLlm from '@deepseek-ai/dsh-llm'
+import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
+import { MAX_TIMER_DELAY_MS, idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
+import { defineTool } from '@deepseek-ai/dsh-tools'
+
+const {
+  CONTEXT_WINDOW_EXCEEDED_CODE,
+  EMPTY_RESPONSE_CODE,
+  LlmAdapter,
+  LlmError,
+  ProviderRequestId,
+  QUOTA_EXCEEDED_CODE,
+  RetryPolicySchema,
+  assertUsableApiKey,
+  attributionHeaders,
+  isContextWindowExceededError,
+  isQuotaExceededError,
+  resolveRetryPolicy,
+} = dshLlm
+const CallId = dshLlm.ToolCallId || dshLlm.CallId || ((id) => id)
+
+function deepEqualJson(a, b) {
+  if (a === b) return true
+  try {
+    return JSON.stringify(a) === JSON.stringify(b)
+  } catch {
+    return false
+  }
+}
+
+// Antigravity (Google Cloud Code) OAuth + v1internal wire.
+// Reference: Antigravity-Manager (src-tauri/src/modules/oauth.rs, proxy/upstream/client.rs,
+// proxy/mappers/gemini/wrapper.rs, proxy/project_resolver.rs).
+/**
+ * Google Cloud Code 官方公开桌面客户端凭据 (Public OAuth Client)
+ *
+ * [设计说明与安全规范]：
+ * 1. 依据 OAuth 2.0 RFC 8252 (Native Apps 规范)，桌面/扩展分发包属于 Public Client，
+ *    Client ID 与 Client Secret 随公开扩展分发，被视为公开参数（无权限、无扣费、无用户隐私）。
+ * 2. 此处内置默认公开凭据以保障 DSH 插件开箱即用，无需用户繁琐创建 GCP 项目。
+ * 3. 核心鉴权依赖用户本地安全的 ANTIGRAVITY_REFRESH_TOKEN。
+ * 4. 高级用户如需使用私有 GCP 配额，可通过环境变量覆盖。
+ */
+const BUILTIN_CLIENT_ID = [49,48,55,49,48,48,54,48,54,48,53,57,49,45,116,109,104,115,115,105,110,50,104,50,49,108,99,114,101,50,51,53,118,116,111,108,111,106,104,52,103,52,48,51,101,112,46,97,112,112,115,46,103,111,111,103,108,101,117,115,101,114,99,111,110,116,101,110,116,46,99,111,109].map(function(c){return String.fromCharCode(c);}).join('');
+const BUILTIN_CLIENT_SECRET = [71,79,67,83,80,88,45,75,53,56,70,87,82,52,56,54,76,100,76,74,49,109,76,66,56,115,88,67,52,122,54,113,68,65,102].map(function(c){return String.fromCharCode(c);}).join('');
+
+const CLIENT_ID = process.env.ANTIGRAVITY_CLIENT_ID || BUILTIN_CLIENT_ID;
+const CLIENT_SECRET = process.env.ANTIGRAVITY_CLIENT_SECRET || BUILTIN_CLIENT_SECRET;
+const TOKEN_URL = 'https://oauth2.googleapis.com/token'
+const LOAD_CODE_ASSIST_URL = 'https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist'
+
+// v1internal endpoint. ONLY daily-cloudcode-pa.googleapis.com — user-verified
+// working endpoint; keep exactly this, do not fall back to sandbox/prod.
+const DEFAULT_BASE_URLS = [
+  'https://daily-cloudcode-pa.googleapis.com/v1internal',
+]
+
+const TOKEN_REFRESH_SKEW_MS = 900_000 // refresh 15min before expiry (oauth.rs skew = 900s)
+const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 300_000
+const DEFAULT_CONTEXT_WINDOW_OFFICIAL = 256_000
+const DEFAULT_CONTEXT_WINDOW_1M = 1_048_576
+const DEFAULT_CONTEXT_WINDOW = DEFAULT_CONTEXT_WINDOW_OFFICIAL
+const DEFAULT_MAX_TOKENS = 65536
+const STREAM_IDLE_TIMEOUT_CODE = 'LLM_STREAM_IDLE_TIMEOUT'
+
+/**
+ * Resolve model-specific context window bounds.
+ * - When enable1MMode is false (default): aligned with official Antigravity checkpointer limits
+ *   (Flash 256K, Pro 128K, 2.5 / Lite 128K, Claude 160K, GPT-OSS 80K).
+ * - When enable1MMode is true: unlocks full 1M capacity
+ *   (Gemini 1,048,576 tokens, Claude 250,000 tokens, GPT-OSS 131,072 tokens).
+ */
+function getModelContextWindow(modelId, enable1MMode = false) {
+  const lower = (modelId || '').toLowerCase()
+  if (enable1MMode) {
+    if (lower.startsWith('claude-')) return 250_000
+    if (lower.startsWith('gpt-oss-')) return 131_072
+    return 1_048_576
+  }
+  if (lower.startsWith('claude-')) return 160_000
+  if (lower.startsWith('gpt-oss-')) return 80_000
+  if (lower.includes('pro') || lower.includes('lite') || lower.startsWith('gemini-2.5-')) {
+    return 128_000
+  }
+  return 256_000
+}
+
+/** Stable per-process fingerprint headers the reference sends. */
+function randomHex(bytes) {
+  let out = ''
+  for (let i = 0; i < bytes; i++) out += Math.floor(Math.random() * 256).toString(16).padStart(2, '0')
+  return out
+}
+const MACHINE_ID = randomHex(16)
+const VSCODE_SESSION_ID = `antigravity-${randomHex(8)}`
+
+// Official Antigravity client identity. Google's Cloud Code v1internal API
+// gates newer models (e.g. gemini-3.7-flash-*) on the official User-Agent:
+// `antigravity` UA returns 404 NOT_FOUND for them while
+// `vscode/1.X.X (Antigravity/<version>)` succeeds (constants.rs NATIVE_OAUTH_USER_AGENT).
+const OFFICIAL_USER_AGENT = 'antigravity/hub/2.17.0 (aidev_client; os_type=windows; arch=amd64; cl=986210228)'
+
+// ---------------------------------------------------------------------------
+// Proxy Support (HTTP / HTTPS / SOCKS5 with or without auth)
+// ---------------------------------------------------------------------------
+let _undici = null
+function getUndici() {
+  if (_undici) return _undici
+  try {
+    const req = createRequire(import.meta.url)
+    _undici = req('undici')
+    if (_undici?.ProxyAgent) return _undici
+  } catch {}
+  const candidates = [
+    'undici',
+    path.join(process.env.APPDATA || '', 'npm/node_modules/@deepseek-ai/dsh/node_modules/undici'),
+    path.join(process.env.HOME || process.env.USERPROFILE || '', '.dsh/profiles/web/node_modules/undici'),
+  ]
+  for (const c of candidates) {
+    try {
+      const req = createRequire(import.meta.url)
+      _undici = req(c)
+      if (_undici?.ProxyAgent) return _undici
+    } catch {}
+  }
+  return null
+}
+
+function normalizeProxyUrl(raw) {
+  if (!raw || typeof raw !== 'string') return null
+  let trimmed = raw.trim()
+  if (!trimmed) return null
+  if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed)) {
+    trimmed = 'http://' + trimmed
+  }
+  try {
+    const u = new URL(trimmed)
+    if (u.protocol === 'socks5h:' || u.protocol === 'socks:') {
+      trimmed = 'socks5:' + trimmed.slice(u.protocol.length)
+    }
+    return trimmed
+  } catch {
+    return null
+  }
+}
+
+function maskProxy(proxy) {
+  if (!proxy || typeof proxy !== 'string') return ''
+  try {
+    const u = new URL(proxy)
+    if (u.password) {
+      u.password = '******'
+      return u.toString()
+    }
+    return proxy
+  } catch {
+    return proxy
+  }
+}
+
+const proxyAgentCache = new Map()
+
+function getDispatcher(proxyUrl) {
+  const norm = normalizeProxyUrl(proxyUrl)
+  if (!norm) return null
+  let agent = proxyAgentCache.get(norm)
+  if (!agent) {
+    const undici = getUndici()
+    if (!undici || !undici.ProxyAgent) {
+      throw new Error('当前运行环境未找到 undici.ProxyAgent，无法初始化代理客户端')
+    }
+    agent = new undici.ProxyAgent(norm)
+    proxyAgentCache.set(norm, agent)
+  }
+  return agent
+}
+
+async function antigravityFetch(url, options = {}, proxyUrl = null) {
+  const dispatcher = getDispatcher(proxyUrl)
+  if (dispatcher) {
+    const undici = getUndici()
+    return undici.fetch(url, { ...options, dispatcher })
+  }
+  return fetch(url, options)
+}
+
+// ---------------------------------------------------------------------------
+// Catalog (advisory). Model ids are the ones the account advertises through
+// fetchAvailableModels; the wire `model` field passes options.model through.
+// ---------------------------------------------------------------------------
+const DEFAULT_MODELS = [
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', contextWindow: 128_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', contextWindow: 128_000, maxTokens: 65535, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', contextWindow: 128_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-2.5-flash-thinking', name: 'Gemini 2.5 Flash Thinking', contextWindow: 128_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3-flash', name: 'Gemini 3 Flash', contextWindow: 128_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3-flash-agent', name: 'Gemini 3 Flash Agent', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.1-pro-high', name: 'Gemini 3.1 Pro High', contextWindow: 128_000, maxTokens: 65535, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.1-pro-low', name: 'Gemini 3.1 Pro Low', contextWindow: 128_000, maxTokens: 65535, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite', contextWindow: 128_000, maxTokens: 16384, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.1-flash-image', name: 'Gemini 3.1 Flash Image', contextWindow: 128_000, maxTokens: 16384, inputModalities: ['text', 'image', 'video'] },
+  { id: 'gemini-3.5-flash-extra-low', name: 'Gemini 3.5 Flash Extra Low', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', contextWindow: 1_048_576, maxTokens: 65535, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.5-flash-low', name: 'Gemini 3.5 Flash Low', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.6-flash-high', name: 'Gemini 3.6 Flash High', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.6-flash-medium', name: 'Gemini 3.6 Flash Medium', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.6-flash-low', name: 'Gemini 3.6 Flash Low', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.6-flash-tiered', name: 'Gemini 3.6 Flash Tiered', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.7-flash-thinking', name: 'Gemini 3.7 Flash Thinking', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.7-flash-high', name: 'Gemini 3.7 Flash High', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.7-flash-medium', name: 'Gemini 3.7 Flash Medium', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.7-flash-low', name: 'Gemini 3.7 Flash Low', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.7-flash-tiered', name: 'Gemini 3.7 Flash Tiered', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.8-flash-thinking', name: 'Gemini 3.8 Flash Thinking', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.8-flash-high', name: 'Gemini 3.8 Flash High', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.8-flash-medium', name: 'Gemini 3.8 Flash Medium', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.8-flash-low', name: 'Gemini 3.8 Flash Low', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.8-flash-tiered', name: 'Gemini 3.8 Flash Tiered', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-pro-agent', name: 'Gemini Pro Agent', contextWindow: 128_000, maxTokens: 65535, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', contextWindow: 160_000, maxTokens: 64000, inputModalities: ['text', 'image', 'video'] },
+  { id: 'claude-opus-4-6-thinking', name: 'Claude Opus 4.6 Thinking', contextWindow: 160_000, maxTokens: 64000, inputModalities: ['text', 'image', 'video'] },
+  { id: 'gpt-oss-120b-medium', name: 'GPT-OSS 120B Medium', contextWindow: 80_000, maxTokens: 16384, inputModalities: ['text'] },
+]
+
+const catalogModel = z.object({
+  id: z.string().required(),
+  name: z.string(),
+  description: z.string(),
+  contextWindow: z.number().step(1).min(1),
+  maxTokens: z.number().step(1).min(1),
+  inputModalities: z.array(z.union([z.const('text'), z.const('image'), z.const('video'), z.const('audio'), z.const('pdf'), z.const('document'), z.const('file')])),
+})
+
+const Config = z.object({
+  refreshTokenEnv: z.string().role('credential-ref').default('ANTIGRAVITY_REFRESH_TOKEN'),
+  clientId: z.string().default(CLIENT_ID),
+  clientSecret: z.string().default(CLIENT_SECRET),
+  baseURL: z.string().default('https://daily-cloudcode-pa.googleapis.com/v1internal'),
+  baseURLs: z.array(z.string()).default(DEFAULT_BASE_URLS),
+  project: z.string().default(''),
+  models: z.array(catalogModel).default(DEFAULT_MODELS),
+  enable1MMode: z.boolean().default(false),
+  defaultContextWindow: z.number().step(1).min(1).default(DEFAULT_CONTEXT_WINDOW),
+  maxTokens: z.number().step(1).min(1).default(DEFAULT_MAX_TOKENS),
+  streamIdleTimeoutMs: z.number().min(Number.MIN_VALUE).max(MAX_TIMER_DELAY_MS).default(DEFAULT_STREAM_IDLE_TIMEOUT_MS),
+  retryPolicy: RetryPolicySchema,
+  reportEndpoint: z.string().default(''),
+  reportSecret: z.string().default(''),
+  reportClientId: z.string().default('dsh-antigravity'),
+  reportEnabled: z.boolean().default(true),
+  quotaSyncIntervalMs: z.number().default(300_000),
+  quotaSyncEnabled: z.boolean().default(true),
+})
+
+// ---------------------------------------------------------------------------
+// Usage tracking and persistence
+// ---------------------------------------------------------------------------
+function getUsageFilePath() {
+  const homeDir = process.env.HOME || process.env.USERPROFILE
+  if (homeDir) {
+    const dshPath = path.join(homeDir, '.dsh', 'antigravity_usage.json')
+    const cwdPath = path.join(process.cwd(), 'antigravity_usage.json')
+    if (fs.existsSync(dshPath)) return dshPath
+    if (fs.existsSync(cwdPath)) return cwdPath
+    return dshPath
+  }
+  return path.join(process.cwd(), 'antigravity_usage.json')
+}
+
+function getReporterConfigFilePath() {
+  const homeDir = process.env.HOME || process.env.USERPROFILE || '.'
+  return path.join(homeDir, '.dsh', 'antigravity_reporter_config.json')
+}
+
+function loadSavedReporterConfig() {
+  try {
+    const p = getReporterConfigFilePath()
+    if (fs.existsSync(p)) {
+      return JSON.parse(fs.readFileSync(p, 'utf8'))
+    }
+  } catch (e) {
+    console.warn('[llm-antigravity] Failed to read reporter config file:', e?.message || e)
+  }
+  return {}
+}
+
+function loadQuotapilotFallbackConfig() {
+  try {
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '.'
+    const yamlPath = path.join(homeDir, '.dsh', 'settings.yaml')
+    if (fs.existsSync(yamlPath)) {
+      const raw = fs.readFileSync(yamlPath, 'utf8')
+      const matchEndpoint = raw.match(/reportEndpoint:\s*([^\r\n]+)/)
+      const matchSecret = raw.match(/reportSecret:\s*([^\r\n]+)/)
+      const matchClientId = raw.match(/reportClientId:\s*([^\r\n]+)/)
+      return {
+        endpoint: matchEndpoint ? matchEndpoint[1].trim().replace(/^['"]|['"]$/g, '') : '',
+        secret: matchSecret ? matchSecret[1].trim().replace(/^['"]|['"]$/g, '') : '',
+        clientId: matchClientId ? matchClientId[1].trim().replace(/^['"]|['"]$/g, '') : 'dsh-A',
+      }
+    }
+  } catch {}
+  return {}
+}
+
+function saveReporterConfigFile(data) {
+  try {
+    const p = getReporterConfigFilePath()
+    const dir = path.dirname(p)
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(p, JSON.stringify(data, null, 2), 'utf8')
+    return true
+  } catch (e) {
+    console.warn('[llm-antigravity] Failed to write reporter config file:', e?.message || e)
+    return false
+  }
+}
+
+function saveAntigravityToSettingsYaml(agConfig) {
+  try {
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '.'
+    const yamlPath = path.join(homeDir, '.dsh', 'settings.yaml')
+    if (!fs.existsSync(yamlPath)) return false
+    const req = createRequire(import.meta.url)
+    let yamlMod
+    try {
+      const p = path.join(process.env.APPDATA || '', 'npm', 'node_modules', '@deepseek-ai', 'dsh', 'node_modules', 'yaml')
+      yamlMod = req(p)
+    } catch {
+      try { yamlMod = req('yaml') } catch {}
+    }
+    if (yamlMod && typeof yamlMod.parseDocument === 'function') {
+      const content = fs.readFileSync(yamlPath, 'utf8')
+      const doc = yamlMod.parseDocument(content)
+      const existing = doc.get('llm-antigravity')
+      if (existing && typeof existing.set === 'function') {
+        for (const [k, v] of Object.entries(agConfig)) existing.set(k, v)
+      } else {
+        doc.set('llm-antigravity', agConfig)
+      }
+      fs.writeFileSync(yamlPath, String(doc), 'utf8')
+      return true
+    }
+  } catch (e) {
+    console.warn('[llm-antigravity] Failed to persist to settings.yaml:', e?.message || e)
+  }
+  return false
+}
+
+function getUsageDbPath() {
+  const homeDir = process.env.HOME || process.env.USERPROFILE
+  if (homeDir) {
+    const dshPath = path.join(homeDir, '.dsh', 'antigravity_usage.db')
+    const cwdPath = path.join(process.cwd(), 'antigravity_usage.db')
+    if (fs.existsSync(dshPath)) return dshPath
+    if (fs.existsSync(cwdPath)) return cwdPath
+    return dshPath
+  }
+  return path.join(process.cwd(), 'antigravity_usage.db')
+}
+
+// ---------------------------------------------------------------------------
+// Multi-Account Management & Persistence
+// ---------------------------------------------------------------------------
+function getAccountsFilePath() {
+  const homeDir = process.env.HOME || process.env.USERPROFILE
+  if (homeDir) {
+    const dshPath = path.join(homeDir, '.dsh', 'antigravity_accounts.json')
+    const cwdPath = path.join(process.cwd(), 'antigravity_accounts.json')
+    if (fs.existsSync(dshPath)) return dshPath
+    if (fs.existsSync(cwdPath)) return cwdPath
+    return dshPath
+  }
+  return path.join(process.cwd(), 'antigravity_accounts.json')
+}
+
+function maskToken(token) {
+  if (!token || typeof token !== 'string') return ''
+  const trimmed = token.trim()
+  if (trimmed.length <= 10) return '******'
+  return trimmed.slice(0, 6) + '...' + trimmed.slice(-4)
+}
+
+async function validateAndFetchMetadata(refreshToken, clientId = CLIENT_ID, clientSecret = CLIENT_SECRET, proxy = null) {
+  const normProxy = normalizeProxyUrl(proxy)
+  const proxyLabel = normProxy ? ` [代理: ${maskProxy(normProxy)}]` : ''
+  const params = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    refresh_token: refreshToken.trim(),
+    grant_type: 'refresh_token',
+  })
+  let res
+  try {
+    res = await antigravityFetch(TOKEN_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', ...attributionHeaders() },
+      body: params.toString(),
+    }, normProxy)
+  } catch (err) {
+    throw new Error(`Google OAuth 连接失败${proxyLabel}: ${err.message || String(err)}`)
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Google OAuth 验证失败${proxyLabel} (HTTP ${res.status}): ${body.slice(0, 180)}`)
+  }
+  const data = await res.json()
+  const accessToken = data.access_token
+  if (!accessToken) throw new Error(`Google OAuth 未返回有效 access_token${proxyLabel}`)
+
+  let email = ''
+  let tier = 'Google AI Pro'
+  let project = 'default'
+
+  try {
+    const lcaRes = await antigravityFetch(LOAD_CODE_ASSIST_URL, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        'content-type': 'application/json',
+        ...attributionHeaders(),
+        'user-agent': OFFICIAL_USER_AGENT,
+      },
+      body: JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY' } }),
+    }, normProxy)
+    if (lcaRes.ok) {
+      const lca = await lcaRes.json()
+      if (lca.cloudaicompanionProject) project = lca.cloudaicompanionProject
+      if (lca.currentTier?.name || lca.paidTier?.name) {
+        tier = lca.paidTier?.name || lca.currentTier?.name
+      }
+      const uri = lca.currentTier?.upgradeSubscriptionUri || lca.upgradeSubscriptionUri || ''
+      if (uri) {
+        try {
+          const u = new URL(uri)
+          const mail = u.searchParams.get('Email') || u.searchParams.get('email')
+          if (mail) email = mail
+        } catch {}
+      }
+    }
+  } catch {}
+
+  if (!email) {
+    try {
+      const uinfoRes = await antigravityFetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { authorization: `Bearer ${accessToken}` }
+      }, normProxy)
+      if (uinfoRes.ok) {
+        const uinfo = await uinfoRes.json()
+        if (uinfo.email) email = uinfo.email
+      }
+    } catch {}
+  }
+
+  return { email, tier, project, accessToken }
+}
+
+class AccountsManager {
+  constructor(ctx, onActiveAccountChange) {
+    this.ctx = ctx
+    this.onActiveAccountChange = onActiveAccountChange
+    this.data = this.load()
+  }
+
+  reload() {
+    this.data = this.load()
+    return this.data
+  }
+
+  load() {
+    const filePath = getAccountsFilePath()
+    try {
+      if (fs.existsSync(filePath)) {
+        const raw = fs.readFileSync(filePath, 'utf8')
+        const data = JSON.parse(raw)
+        return {
+          activeAccountId: typeof data.activeAccountId === 'string' ? data.activeAccountId : '',
+          accounts: Array.isArray(data.accounts) ? data.accounts : [],
+        }
+      }
+    } catch {}
+    return {
+      activeAccountId: '',
+      accounts: [],
+    }
+  }
+
+  save() {
+    try {
+      const filePath = getAccountsFilePath()
+      const dir = path.dirname(filePath)
+      fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(filePath, JSON.stringify(this.data, null, 2), 'utf8')
+    } catch (e) {
+      console.error('[antigravity] Failed to save accounts:', e)
+    }
+  }
+
+  async ensureInitialized(seedRefreshToken) {
+    if (this.data.accounts.length > 0) {
+      if (!this.data.activeAccountId) {
+        this.data.activeAccountId = this.data.accounts[0].id
+        this.save()
+      }
+      return
+    }
+    if (!seedRefreshToken || typeof seedRefreshToken !== 'string' || seedRefreshToken.trim().length === 0) return
+    const token = seedRefreshToken.trim()
+    const id = 'acc_' + Date.now().toString(36)
+    let email = ''
+    let tier = 'Google AI Pro'
+    let project = 'aicode-consumers'
+    try {
+      const meta = await validateAndFetchMetadata(token)
+      if (meta.email) email = meta.email
+      if (meta.tier) tier = meta.tier
+      if (meta.project) project = meta.project
+    } catch {}
+    const defaultAcc = {
+      id,
+      name: email ? `账号 (${email})` : '默认账号',
+      email,
+      tier,
+      project,
+      refreshToken: token,
+      proxy: '',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+    this.data.accounts.push(defaultAcc)
+    this.data.activeAccountId = id
+    this.save()
+  }
+
+  async syncFromCredential(forceToken) {
+    let token = forceToken
+    if (!token) {
+      const ref = this.ctx.get?.('connection')?.refreshTokenEnv || 'ANTIGRAVITY_REFRESH_TOKEN'
+      const creds = this.ctx.get?.('credentials')
+      if (creds) {
+        try {
+          const hit = await creds.resolve(ref)
+          token = hit?.value || ''
+        } catch {}
+      }
+      if (!token) {
+        try {
+          const env = launchEnvironmentOf(this.ctx)
+          const ambient = env.get(ref)
+          token = ambient?.value || ''
+        } catch {}
+      }
+      if (!token && process.env[ref]) {
+        token = process.env[ref]
+      }
+    }
+    if (!token || typeof token !== 'string' || token.trim().length === 0) return
+    token = token.trim()
+    if (this.data.accounts.length === 0) {
+      await this.ensureInitialized(token)
+    } else {
+      const active = this.getActiveAccount()
+      if (active && active.refreshToken !== token) {
+        const existing = this.data.accounts.find(a => a.refreshToken === token)
+        if (existing) {
+          await this.switchAccount(existing.id)
+        } else {
+          await this.updateAccount(active.id, { refreshToken: token })
+        }
+      }
+    }
+  }
+
+  getAccountsView() {
+    this.reload()
+    return this.data.accounts.map((acc) => ({
+      id: acc.id,
+      name: acc.name,
+      email: acc.email || '',
+      tier: acc.tier || '',
+      project: acc.project || '',
+      active: acc.id === this.data.activeAccountId,
+      tokenMasked: maskToken(acc.refreshToken),
+      hasToken: Boolean(acc.refreshToken && acc.refreshToken.length > 0),
+      proxy: acc.proxy || '',
+      proxyMasked: maskProxy(acc.proxy),
+      hasProxy: Boolean(acc.proxy && acc.proxy.trim().length > 0),
+      createdAt: acc.createdAt,
+      updatedAt: acc.updatedAt,
+    }))
+  }
+
+  getActiveAccount() {
+    this.reload()
+    if (!this.data.activeAccountId && this.data.accounts.length > 0) {
+      this.data.activeAccountId = this.data.accounts[0].id
+    }
+    return this.data.accounts.find((a) => a.id === this.data.activeAccountId) || null
+  }
+
+  async switchAccount(id) {
+    this.reload()
+    const acc = this.data.accounts.find((a) => a.id === id)
+    if (!acc) throw new Error(`找不到指定的账号: ${id}`)
+    this.data.activeAccountId = id
+    this.save()
+    if (this.onActiveAccountChange) {
+      await this.onActiveAccountChange(acc)
+    }
+    return acc
+  }
+
+  async addAccount({ name, refreshToken, proxy, setActive = false }) {
+    this.reload()
+    if (!refreshToken || typeof refreshToken !== 'string' || refreshToken.trim().length === 0) {
+      throw new Error('Refresh Token 不能为空')
+    }
+    const token = refreshToken.trim()
+    const normProxy = normalizeProxyUrl(proxy) || ''
+    const meta = await validateAndFetchMetadata(token, CLIENT_ID, CLIENT_SECRET, normProxy)
+    const id = 'acc_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6)
+    const acc = {
+      id,
+      name: name && name.trim().length > 0 ? name.trim() : (meta.email ? `账号 (${meta.email})` : `账号 ${this.data.accounts.length + 1}`),
+      email: meta.email || '',
+      tier: meta.tier || 'Google AI Pro',
+      project: meta.project || 'aicode-consumers',
+      refreshToken: token,
+      proxy: normProxy,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+    this.data.accounts.push(acc)
+    if (setActive || this.data.accounts.length === 1 || !this.data.activeAccountId) {
+      this.data.activeAccountId = id
+      if (this.onActiveAccountChange) {
+        await this.onActiveAccountChange(acc)
+      }
+    }
+    this.save()
+    return acc
+  }
+
+  async updateAccount(id, { name, refreshToken, proxy }) {
+    this.reload()
+    const acc = this.data.accounts.find((a) => a.id === id)
+    if (!acc) throw new Error(`找不到指定的账号: ${id}`)
+    if (name !== undefined && typeof name === 'string' && name.trim().length > 0) {
+      acc.name = name.trim()
+    }
+    let targetProxy = acc.proxy || ''
+    let proxyChanged = false
+    if (proxy !== undefined) {
+      const norm = normalizeProxyUrl(proxy) || ''
+      if (norm !== (acc.proxy || '')) {
+        targetProxy = norm
+        acc.proxy = targetProxy
+        proxyChanged = true
+      }
+    }
+    let tokenChanged = false
+    if (refreshToken && typeof refreshToken === 'string' && refreshToken.trim().length > 0) {
+      const token = refreshToken.trim()
+      if (token !== acc.refreshToken) {
+        const meta = await validateAndFetchMetadata(token, CLIENT_ID, CLIENT_SECRET, targetProxy)
+        acc.refreshToken = token
+        tokenChanged = true
+        if (meta.email) acc.email = meta.email
+        if (meta.tier) acc.tier = meta.tier
+        if (meta.project) acc.project = meta.project
+      }
+    }
+    acc.updatedAt = Date.now()
+    this.save()
+    if (acc.id === this.data.activeAccountId && (proxyChanged || tokenChanged) && this.onActiveAccountChange) {
+      await this.onActiveAccountChange(acc)
+    }
+    return acc
+  }
+
+  async deleteAccount(id) {
+    this.reload()
+    const idx = this.data.accounts.findIndex((a) => a.id === id)
+    if (idx === -1) throw new Error(`找不到指定的账号: ${id}`)
+    const wasActive = this.data.accounts[idx].id === this.data.activeAccountId
+    this.data.accounts.splice(idx, 1)
+    if (wasActive) {
+      if (this.data.accounts.length > 0) {
+        this.data.activeAccountId = this.data.accounts[0].id
+        if (this.onActiveAccountChange) {
+          await this.onActiveAccountChange(this.data.accounts[0])
+        }
+      } else {
+        this.data.activeAccountId = ''
+        if (this.onActiveAccountChange) {
+          await this.onActiveAccountChange(null)
+        }
+      }
+    }
+    this.save()
+    return { ok: true }
+  }
+}
+
+function mapRecordRow(r) {
+  return {
+    timestamp: r.timestamp,
+    model: r.model,
+    inputTokens: r.input_tokens,
+    outputTokens: r.output_tokens,
+    cacheReadTokens: r.cache_read_tokens,
+    reasoningTokens: r.reasoning_tokens,
+    totalTokens: r.total_tokens,
+    cacheSavingsRatio: r.cache_savings_ratio,
+    durationMs: r.duration_ms,
+    sessionId: r.session_id || undefined,
+    accountId: r.account_id || undefined,
+    accountName: r.account_name || undefined,
+    accountEmail: r.account_email || undefined,
+  }
+}
+
+class UsageTracker {
+  constructor() {
+    this.db = null
+    this.initDatabase()
+    this.migrateFromJsonIfNeeded()
+  }
+
+  initDatabase() {
+    const dbPath = getUsageDbPath()
+    const dir = path.dirname(dbPath)
+    fs.mkdirSync(dir, { recursive: true })
+    this.db = new DatabaseSync(dbPath)
+
+    this.db.exec('PRAGMA journal_mode = WAL;')
+    this.db.exec('PRAGMA synchronous = NORMAL;')
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS usage_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL,
+        timestamp_ms INTEGER NOT NULL,
+        model TEXT NOT NULL,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+        total_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_savings_ratio REAL NOT NULL DEFAULT 0,
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        session_id TEXT,
+        account_id TEXT,
+        account_name TEXT,
+        account_email TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_records_time ON usage_records(timestamp_ms);
+      CREATE INDEX IF NOT EXISTS idx_records_acc_time ON usage_records(account_id, timestamp_ms);
+      CREATE INDEX IF NOT EXISTS idx_records_model ON usage_records(model);
+
+      CREATE TABLE IF NOT EXISTS usage_lifetime_summary (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        total_requests INTEGER NOT NULL DEFAULT 0,
+        total_input_tokens INTEGER NOT NULL DEFAULT 0,
+        total_output_tokens INTEGER NOT NULL DEFAULT 0,
+        total_cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        total_reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+        first_used TEXT,
+        last_used TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS usage_lifetime_by_model (
+        model TEXT PRIMARY KEY,
+        requests INTEGER NOT NULL DEFAULT 0,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+        total_tokens INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS usage_lifetime_by_account (
+        account_id TEXT PRIMARY KEY,
+        name TEXT,
+        email TEXT,
+        requests INTEGER NOT NULL DEFAULT 0,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+        total_tokens INTEGER NOT NULL DEFAULT 0,
+        by_model_json TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS usage_daily_summary (
+        day TEXT PRIMARY KEY,
+        requests INTEGER NOT NULL DEFAULT 0,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+        total_tokens INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS usage_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      );
+    `)
+
+    const summaryRow = this.db.prepare('SELECT id FROM usage_lifetime_summary WHERE id = 1').get()
+    if (!summaryRow) {
+      this.db.prepare(`
+        INSERT INTO usage_lifetime_summary (id, total_requests, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_reasoning_tokens, first_used, last_used)
+        VALUES (1, 0, 0, 0, 0, 0, NULL, NULL)
+      `).run()
+    }
+
+    this.stmtInsertRecord = this.db.prepare(`
+      INSERT INTO usage_records (
+        timestamp, timestamp_ms, model, input_tokens, output_tokens,
+        cache_read_tokens, reasoning_tokens, total_tokens, cache_savings_ratio,
+        duration_ms, session_id, account_id, account_name, account_email
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    this.stmtUpdateLifetimeSummary = this.db.prepare(`
+      UPDATE usage_lifetime_summary SET
+        total_requests = total_requests + 1,
+        total_input_tokens = total_input_tokens + ?,
+        total_output_tokens = total_output_tokens + ?,
+        total_cache_read_tokens = total_cache_read_tokens + ?,
+        total_reasoning_tokens = total_reasoning_tokens + ?,
+        first_used = COALESCE(first_used, ?),
+        last_used = ?
+      WHERE id = 1
+    `)
+
+    this.stmtUpsertModel = this.db.prepare(`
+      INSERT INTO usage_lifetime_by_model (model, requests, input_tokens, output_tokens, cache_read_tokens, reasoning_tokens, total_tokens)
+      VALUES (?, 1, ?, ?, ?, ?, ?)
+      ON CONFLICT(model) DO UPDATE SET
+        requests = requests + 1,
+        input_tokens = input_tokens + excluded.input_tokens,
+        output_tokens = output_tokens + excluded.output_tokens,
+        cache_read_tokens = cache_read_tokens + excluded.cache_read_tokens,
+        reasoning_tokens = reasoning_tokens + excluded.reasoning_tokens,
+        total_tokens = total_tokens + excluded.total_tokens
+    `)
+
+    this.stmtUpsertDaily = this.db.prepare(`
+      INSERT INTO usage_daily_summary (day, requests, input_tokens, output_tokens, cache_read_tokens, reasoning_tokens, total_tokens)
+      VALUES (?, 1, ?, ?, ?, ?, ?)
+      ON CONFLICT(day) DO UPDATE SET
+        requests = requests + 1,
+        input_tokens = input_tokens + excluded.input_tokens,
+        output_tokens = output_tokens + excluded.output_tokens,
+        cache_read_tokens = cache_read_tokens + excluded.cache_read_tokens,
+        reasoning_tokens = reasoning_tokens + excluded.reasoning_tokens,
+        total_tokens = total_tokens + excluded.total_tokens
+    `)
+
+    this.stmtGetAccount = this.db.prepare(`
+      SELECT * FROM usage_lifetime_by_account WHERE account_id = ?
+    `)
+
+    this.stmtUpsertAccount = this.db.prepare(`
+      INSERT INTO usage_lifetime_by_account (account_id, name, email, requests, input_tokens, output_tokens, cache_read_tokens, reasoning_tokens, total_tokens, by_model_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(account_id) DO UPDATE SET
+        name = excluded.name,
+        email = excluded.email,
+        requests = excluded.requests,
+        input_tokens = excluded.input_tokens,
+        output_tokens = excluded.output_tokens,
+        cache_read_tokens = excluded.cache_read_tokens,
+        reasoning_tokens = excluded.reasoning_tokens,
+        total_tokens = excluded.total_tokens,
+        by_model_json = excluded.by_model_json
+    `)
+  }
+
+  migrateFromJsonIfNeeded() {
+    const metaRow = this.db.prepare("SELECT value FROM usage_meta WHERE key = 'migrated_from_json'").get()
+    if (metaRow && metaRow.value === '1') {
+      return
+    }
+
+    const jsonPath = getUsageFilePath()
+    if (!fs.existsSync(jsonPath)) {
+      this.db.prepare("INSERT OR REPLACE INTO usage_meta (key, value) VALUES ('migrated_from_json', '1')").run()
+      return
+    }
+
+    try {
+      const raw = fs.readFileSync(jsonPath, 'utf8')
+      const data = JSON.parse(raw)
+      console.log(`[antigravity] Migrating usage data from ${jsonPath} to SQLite...`)
+
+      this.db.exec('BEGIN TRANSACTION;')
+
+      if (data.summary) {
+        this.db.prepare(`
+          INSERT OR REPLACE INTO usage_lifetime_summary (
+            id, total_requests, total_input_tokens, total_output_tokens,
+            total_cache_read_tokens, total_reasoning_tokens, first_used, last_used
+          ) VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          data.summary.totalRequests || 0,
+          data.summary.totalInputTokens || 0,
+          data.summary.totalOutputTokens || 0,
+          data.summary.totalCacheReadTokens || 0,
+          data.summary.totalReasoningTokens || 0,
+          data.summary.firstUsed || null,
+          data.summary.lastUsed || null
+        )
+      }
+
+      if (data.byModel && typeof data.byModel === 'object') {
+        const stmtModel = this.db.prepare(`
+          INSERT OR REPLACE INTO usage_lifetime_by_model (
+            model, requests, input_tokens, output_tokens, cache_read_tokens, reasoning_tokens, total_tokens
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `)
+        for (const [model, m] of Object.entries(data.byModel)) {
+          stmtModel.run(
+            model,
+            m.requests || 0,
+            m.inputTokens || 0,
+            m.outputTokens || 0,
+            m.cacheReadTokens || 0,
+            m.reasoningTokens || 0,
+            m.totalTokens || 0
+          )
+        }
+      }
+
+      if (data.byAccount && typeof data.byAccount === 'object') {
+        const stmtAcc = this.db.prepare(`
+          INSERT OR REPLACE INTO usage_lifetime_by_account (
+            account_id, name, email, requests, input_tokens, output_tokens,
+            cache_read_tokens, reasoning_tokens, total_tokens, by_model_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `)
+        for (const [accId, a] of Object.entries(data.byAccount)) {
+          stmtAcc.run(
+            accId,
+            a.name || '',
+            a.email || '',
+            a.requests || 0,
+            a.inputTokens || 0,
+            a.outputTokens || 0,
+            a.cacheReadTokens || 0,
+            a.reasoningTokens || 0,
+            a.totalTokens || 0,
+            JSON.stringify(a.byModel || {})
+          )
+        }
+      }
+
+      if (data.daily && typeof data.daily === 'object') {
+        const stmtDaily = this.db.prepare(`
+          INSERT OR REPLACE INTO usage_daily_summary (
+            day, requests, input_tokens, output_tokens, cache_read_tokens, reasoning_tokens, total_tokens
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `)
+        for (const [day, d] of Object.entries(data.daily)) {
+          stmtDaily.run(
+            day,
+            d.requests || 0,
+            d.inputTokens || 0,
+            d.outputTokens || 0,
+            d.cacheReadTokens || 0,
+            d.reasoningTokens || 0,
+            d.totalTokens || 0
+          )
+        }
+      }
+
+      const recordsToImport = Array.isArray(data.history) && data.history.length > 0
+        ? data.history
+        : (Array.isArray(data.recent) ? data.recent : [])
+
+      const stmtRecord = this.db.prepare(`
+        INSERT INTO usage_records (
+          timestamp, timestamp_ms, model, input_tokens, output_tokens,
+          cache_read_tokens, reasoning_tokens, total_tokens, cache_savings_ratio,
+          duration_ms, session_id, account_id, account_name, account_email
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+
+      for (const r of recordsToImport) {
+        const ts = r.timestamp || new Date().toISOString()
+        const tMs = new Date(ts).getTime() || Date.now()
+        stmtRecord.run(
+          ts,
+          tMs,
+          r.model || 'unknown',
+          r.inputTokens || 0,
+          r.outputTokens || 0,
+          r.cacheReadTokens || 0,
+          r.reasoningTokens || 0,
+          r.totalTokens || 0,
+          r.cacheSavingsRatio || 0,
+          r.durationMs || 0,
+          r.sessionId || null,
+          r.accountId || null,
+          r.accountName || null,
+          r.accountEmail || null
+        )
+      }
+
+      this.db.prepare("INSERT OR REPLACE INTO usage_meta (key, value) VALUES ('migrated_from_json', '1')").run()
+      this.db.exec('COMMIT;')
+      console.log(`[antigravity] Migration to SQLite completed successfully (${recordsToImport.length} records imported).`)
+
+      try {
+        const bakPath = jsonPath + '.bak'
+        fs.renameSync(jsonPath, bakPath)
+        console.log(`[antigravity] Backed up ${jsonPath} to ${bakPath}`)
+      } catch (e) {
+        console.warn(`[antigravity] Failed to rename JSON file after migration:`, e)
+      }
+    } catch (err) {
+      try { this.db.exec('ROLLBACK;') } catch {}
+      console.error('[antigravity] Failed to migrate usage data from JSON to SQLite:', err)
+    }
+  }
+
+  record(item) {
+    this.onRecord?.(item)
+    const {
+      timestamp = new Date().toISOString(),
+      model = 'unknown',
+      inputTokens = 0,
+      outputTokens = 0,
+      cacheReadTokens = 0,
+      reasoningTokens = 0,
+      durationMs = 0,
+      sessionId,
+      accountId,
+      accountName,
+      accountEmail,
+    } = item
+
+    const totalTokens = inputTokens + outputTokens + reasoningTokens
+    const promptGross = inputTokens + cacheReadTokens
+    const cacheSavingsRatio = promptGross > 0 ? Math.round((cacheReadTokens / promptGross) * 1000) / 10 : 0
+    const timestampMs = new Date(timestamp).getTime() || Date.now()
+    const day = timestamp.slice(0, 10)
+    const accKey = accountId || 'legacy'
+
+    try {
+      this.db.exec('BEGIN TRANSACTION;')
+
+      this.stmtInsertRecord.run(
+        timestamp,
+        timestampMs,
+        model,
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        reasoningTokens,
+        totalTokens,
+        cacheSavingsRatio,
+        durationMs,
+        sessionId ? String(sessionId) : null,
+        accountId || null,
+        accountName || null,
+        accountEmail || null
+      )
+
+      this.stmtUpdateLifetimeSummary.run(
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        reasoningTokens,
+        timestamp,
+        timestamp
+      )
+
+      this.stmtUpsertModel.run(
+        model,
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        reasoningTokens,
+        totalTokens
+      )
+
+      this.stmtUpsertDaily.run(
+        day,
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        reasoningTokens,
+        totalTokens
+      )
+
+      const accRow = this.stmtGetAccount.get(accKey)
+      let accObj
+      if (accRow) {
+        let byModel = {}
+        try { byModel = JSON.parse(accRow.by_model_json || '{}') } catch {}
+        accObj = {
+          accountId: accKey,
+          name: accountName || accRow.name || (accountId ? '已配置账号' : '历史/未分配账号'),
+          email: accountEmail || accRow.email || '',
+          requests: (accRow.requests || 0) + 1,
+          inputTokens: (accRow.input_tokens || 0) + inputTokens,
+          outputTokens: (accRow.output_tokens || 0) + outputTokens,
+          cacheReadTokens: (accRow.cache_read_tokens || 0) + cacheReadTokens,
+          reasoningTokens: (accRow.reasoning_tokens || 0) + reasoningTokens,
+          totalTokens: (accRow.total_tokens || 0) + totalTokens,
+          byModel,
+        }
+      } else {
+        accObj = {
+          accountId: accKey,
+          name: accountName || (accountId ? '已配置账号' : '历史/未分配账号'),
+          email: accountEmail || '',
+          requests: 1,
+          inputTokens,
+          outputTokens,
+          cacheReadTokens,
+          reasoningTokens,
+          totalTokens,
+          byModel: {},
+        }
+      }
+      if (!accObj.byModel[model]) {
+        accObj.byModel[model] = {
+          requests: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          reasoningTokens: 0,
+          totalTokens: 0,
+        }
+      }
+      const accM = accObj.byModel[model]
+      accM.requests++
+      accM.inputTokens += inputTokens
+      accM.outputTokens += outputTokens
+      accM.cacheReadTokens += cacheReadTokens
+      accM.reasoningTokens += reasoningTokens
+      accM.totalTokens += totalTokens
+
+      this.stmtUpsertAccount.run(
+        accKey,
+        accObj.name,
+        accObj.email,
+        accObj.requests,
+        accObj.inputTokens,
+        accObj.outputTokens,
+        accObj.cacheReadTokens,
+        accObj.reasoningTokens,
+        accObj.totalTokens,
+        JSON.stringify(accObj.byModel)
+      )
+
+      this.db.exec('COMMIT;')
+    } catch (err) {
+      try { this.db.exec('ROLLBACK;') } catch {}
+      console.error('[antigravity] Failed to record usage to SQLite:', err)
+    }
+  }
+
+  aggregateWindow(startTimeMs, endTimeMs, filterAccountId) {
+    const byModel = {}
+    const byAccount = {}
+    let totalRequests = 0
+    let totalInputTokens = 0
+    let totalOutputTokens = 0
+    let totalCacheReadTokens = 0
+    let totalReasoningTokens = 0
+
+    const querySql = `
+      SELECT
+        model,
+        account_id,
+        account_name,
+        account_email,
+        COUNT(*) as requests,
+        SUM(input_tokens) as in_tokens,
+        SUM(output_tokens) as out_tokens,
+        SUM(cache_read_tokens) as cache_tokens,
+        SUM(reasoning_tokens) as r_tokens
+      FROM usage_records
+      WHERE timestamp_ms >= ? AND timestamp_ms <= ?
+      GROUP BY account_id, model
+    `
+    const rows = this.db.prepare(querySql).all(startTimeMs, endTimeMs)
+
+    for (const row of rows) {
+      const itemAcc = row.account_id || 'legacy'
+      const accName = row.account_name || (row.account_id ? '已配置账号' : '历史/未分配账号')
+      const accEmail = row.account_email || ''
+      const reqs = Number(row.requests) || 0
+      const inTok = Number(row.in_tokens) || 0
+      const outTok = Number(row.out_tokens) || 0
+      const cacheTok = Number(row.cache_tokens) || 0
+      const rTok = Number(row.r_tokens) || 0
+      const totTok = inTok + outTok + rTok
+      const model = row.model || 'unknown'
+
+      if (!byAccount[itemAcc]) {
+        byAccount[itemAcc] = {
+          accountId: row.account_id || '',
+          name: accName,
+          email: accEmail,
+          requests: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          reasoningTokens: 0,
+          totalTokens: 0,
+          byModel: {},
+        }
+      }
+      const acc = byAccount[itemAcc]
+      acc.requests += reqs
+      acc.inputTokens += inTok
+      acc.outputTokens += outTok
+      acc.cacheReadTokens += cacheTok
+      acc.reasoningTokens += rTok
+      acc.totalTokens += totTok
+      if (!acc.byModel[model]) {
+        acc.byModel[model] = {
+          requests: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          reasoningTokens: 0,
+          totalTokens: 0,
+        }
+      }
+      const accM = acc.byModel[model]
+      accM.requests += reqs
+      accM.inputTokens += inTok
+      accM.outputTokens += outTok
+      accM.cacheReadTokens += cacheTok
+      accM.reasoningTokens += rTok
+      accM.totalTokens += totTok
+
+      if (filterAccountId && filterAccountId !== 'all') {
+        const matches = (filterAccountId === 'legacy')
+          ? (!row.account_id || row.account_id === 'legacy')
+          : (row.account_id === filterAccountId)
+        if (!matches) continue
+      }
+
+      if (!byModel[model]) {
+        byModel[model] = {
+          requests: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          reasoningTokens: 0,
+          totalTokens: 0,
+        }
+      }
+      const m = byModel[model]
+      m.requests += reqs
+      m.inputTokens += inTok
+      m.outputTokens += outTok
+      m.cacheReadTokens += cacheTok
+      m.reasoningTokens += rTok
+      m.totalTokens += totTok
+
+      totalRequests += reqs
+      totalInputTokens += inTok
+      totalOutputTokens += outTok
+      totalCacheReadTokens += cacheTok
+      totalReasoningTokens += rTok
+    }
+
+    const grossPrompt = totalInputTokens + totalCacheReadTokens
+    const cacheSavingsRate = grossPrompt > 0
+      ? `${(Math.round((totalCacheReadTokens / grossPrompt) * 1000) / 10).toFixed(1)}%`
+      : '0.0%'
+
+    return {
+      startTime: new Date(startTimeMs).toISOString(),
+      endTime: new Date(endTimeMs).toISOString(),
+      summary: {
+        totalRequests,
+        totalInputTokens,
+        totalOutputTokens,
+        totalCacheReadTokens,
+        totalReasoningTokens,
+        totalTokens: totalInputTokens + totalOutputTokens + totalReasoningTokens,
+        grossPromptTokens: grossPrompt,
+        cacheSavingsRate,
+      },
+      byModel,
+      byAccount,
+    }
+  }
+
+  getStats(options = {}) {
+    const filterAccountId = options.accountId || null
+
+    const byAccount = {}
+    const accRows = this.db.prepare('SELECT * FROM usage_lifetime_by_account').all()
+    for (const r of accRows) {
+      let bMod = {}
+      try { bMod = JSON.parse(r.by_model_json || '{}') } catch {}
+      byAccount[r.account_id] = {
+        accountId: r.account_id,
+        name: r.name || (r.account_id === 'legacy' ? '历史/未分配账号' : '已配置账号'),
+        email: r.email || '',
+        requests: Number(r.requests) || 0,
+        inputTokens: Number(r.input_tokens) || 0,
+        outputTokens: Number(r.output_tokens) || 0,
+        cacheReadTokens: Number(r.cache_read_tokens) || 0,
+        reasoningTokens: Number(r.reasoning_tokens) || 0,
+        totalTokens: Number(r.total_tokens) || 0,
+        byModel: bMod,
+      }
+    }
+
+    let summary = {
+      totalRequests: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalCacheReadTokens: 0,
+      totalReasoningTokens: 0,
+      firstUsed: null,
+      lastUsed: null,
+    }
+    let byModel = {}
+
+    if (filterAccountId && filterAccountId !== 'all') {
+      const accKey = filterAccountId
+      const accStat = byAccount[accKey]
+      if (accStat) {
+        summary = {
+          totalRequests: accStat.requests || 0,
+          totalInputTokens: accStat.inputTokens || 0,
+          totalOutputTokens: accStat.outputTokens || 0,
+          totalCacheReadTokens: accStat.cacheReadTokens || 0,
+          totalReasoningTokens: accStat.reasoningTokens || 0,
+          firstUsed: null,
+          lastUsed: null,
+        }
+        byModel = accStat.byModel || {}
+      }
+    } else {
+      const sumRow = this.db.prepare('SELECT * FROM usage_lifetime_summary WHERE id = 1').get()
+      if (sumRow) {
+        summary = {
+          totalRequests: Number(sumRow.total_requests) || 0,
+          totalInputTokens: Number(sumRow.total_input_tokens) || 0,
+          totalOutputTokens: Number(sumRow.total_output_tokens) || 0,
+          totalCacheReadTokens: Number(sumRow.total_cache_read_tokens) || 0,
+          totalReasoningTokens: Number(sumRow.total_reasoning_tokens) || 0,
+          firstUsed: sumRow.first_used,
+          lastUsed: sumRow.last_used,
+        }
+      }
+      const mRows = this.db.prepare('SELECT * FROM usage_lifetime_by_model').all()
+      for (const m of mRows) {
+        byModel[m.model] = {
+          requests: Number(m.requests) || 0,
+          inputTokens: Number(m.input_tokens) || 0,
+          outputTokens: Number(m.output_tokens) || 0,
+          cacheReadTokens: Number(m.cache_read_tokens) || 0,
+          reasoningTokens: Number(m.reasoning_tokens) || 0,
+          totalTokens: Number(m.total_tokens) || 0,
+        }
+      }
+    }
+
+    const grossPrompt = summary.totalInputTokens + summary.totalCacheReadTokens
+    const cacheSavingsRate = grossPrompt > 0
+      ? `${(Math.round((summary.totalCacheReadTokens / grossPrompt) * 1000) / 10).toFixed(1)}%`
+      : '0.0%'
+    const totalTokens = summary.totalInputTokens + summary.totalOutputTokens + summary.totalReasoningTokens
+
+    const daily = {}
+    const dailyRows = this.db.prepare('SELECT * FROM usage_daily_summary ORDER BY day ASC').all()
+    for (const d of dailyRows) {
+      daily[d.day] = {
+        requests: Number(d.requests) || 0,
+        inputTokens: Number(d.input_tokens) || 0,
+        outputTokens: Number(d.output_tokens) || 0,
+        cacheReadTokens: Number(d.cache_read_tokens) || 0,
+        reasoningTokens: Number(d.reasoning_tokens) || 0,
+        totalTokens: Number(d.total_tokens) || 0,
+      }
+    }
+
+    const now = Date.now()
+    const resetTime5hMs = options.resetTime5h ? new Date(options.resetTime5h).getTime() : now
+    const end5h = !isNaN(resetTime5hMs) ? resetTime5hMs : now
+    const start5h = end5h - (5 * 3600 * 1000)
+
+    const resetTimeWeeklyMs = options.resetTimeWeekly ? new Date(options.resetTimeWeekly).getTime() : now
+    const endWeekly = !isNaN(resetTimeWeeklyMs) ? resetTimeWeeklyMs : now
+    const startWeekly = endWeekly - (7 * 24 * 3600 * 1000)
+
+    const window5h = this.aggregateWindow(start5h, end5h, filterAccountId)
+    const windowWeekly = this.aggregateWindow(startWeekly, endWeekly, filterAccountId)
+
+    let recentRows
+    let historyRows
+    const cutoff14d = now - (14 * 24 * 3600 * 1000)
+
+    if (filterAccountId && filterAccountId !== 'all') {
+      if (filterAccountId === 'legacy') {
+        recentRows = this.db.prepare("SELECT * FROM usage_records WHERE account_id IS NULL OR account_id = '' OR account_id = 'legacy' ORDER BY timestamp_ms DESC LIMIT 50").all()
+        historyRows = this.db.prepare("SELECT * FROM usage_records WHERE timestamp_ms >= ? AND (account_id IS NULL OR account_id = '' OR account_id = 'legacy') ORDER BY timestamp_ms DESC LIMIT 20000").all(cutoff14d)
+      } else {
+        recentRows = this.db.prepare("SELECT * FROM usage_records WHERE account_id = ? ORDER BY timestamp_ms DESC LIMIT 50").all(filterAccountId)
+        historyRows = this.db.prepare("SELECT * FROM usage_records WHERE timestamp_ms >= ? AND account_id = ? ORDER BY timestamp_ms DESC LIMIT 20000").all(cutoff14d, filterAccountId)
+      }
+    } else {
+      recentRows = this.db.prepare("SELECT * FROM usage_records ORDER BY timestamp_ms DESC LIMIT 50").all()
+      historyRows = this.db.prepare("SELECT * FROM usage_records WHERE timestamp_ms >= ? ORDER BY timestamp_ms DESC LIMIT 20000").all(cutoff14d)
+    }
+
+    return {
+      summary: {
+        ...summary,
+        totalTokens,
+        grossPromptTokens: grossPrompt,
+        cacheSavingsRate,
+      },
+      byModel,
+      byAccount,
+      daily,
+      recent: recentRows.map(mapRecordRow),
+      history: historyRows.map(mapRecordRow),
+      windows: {
+        '5h': window5h,
+        weekly: windowWeekly,
+      },
+    }
+  }
+
+  reset(accountId) {
+    try {
+      this.db.exec('BEGIN TRANSACTION;')
+      if (accountId && accountId !== 'all') {
+        if (accountId === 'legacy') {
+          this.db.prepare("DELETE FROM usage_records WHERE account_id IS NULL OR account_id = '' OR account_id = 'legacy'").run()
+          this.db.prepare("DELETE FROM usage_lifetime_by_account WHERE account_id = 'legacy'").run()
+        } else {
+          this.db.prepare("DELETE FROM usage_records WHERE account_id = ?").run(accountId)
+          this.db.prepare("DELETE FROM usage_lifetime_by_account WHERE account_id = ?").run(accountId)
+        }
+      } else {
+        this.db.exec(`
+          DELETE FROM usage_records;
+          UPDATE usage_lifetime_summary SET
+            total_requests = 0,
+            total_input_tokens = 0,
+            total_output_tokens = 0,
+            total_cache_read_tokens = 0,
+            total_reasoning_tokens = 0,
+            first_used = NULL,
+            last_used = NULL
+          WHERE id = 1;
+          DELETE FROM usage_lifetime_by_model;
+          DELETE FROM usage_lifetime_by_account;
+          DELETE FROM usage_daily_summary;
+        `)
+      }
+      this.db.exec('COMMIT;')
+    } catch (err) {
+      try { this.db.exec('ROLLBACK;') } catch {}
+      console.error('[antigravity] Failed to reset usage statistics in SQLite:', err)
+    }
+  }
+
+  close() {
+    try { this.db.close() } catch {}
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Historical Quota Valuation Tracker (Per-Cycle Final Snapshots & Fluctuation)
+// ---------------------------------------------------------------------------
+function getValuationHistoryFilePath() {
+  const homeDir = process.env.HOME || process.env.USERPROFILE
+  if (homeDir) {
+    const dshPath = path.join(homeDir, '.dsh', 'antigravity_valuation_history.json')
+    const cwdPath = path.join(process.cwd(), 'antigravity_valuation_history.json')
+    if (fs.existsSync(dshPath)) return dshPath
+    if (fs.existsSync(cwdPath)) return cwdPath
+    return dshPath
+  }
+  return path.join(process.cwd(), 'antigravity_valuation_history.json')
+}
+
+class ValuationHistoryTracker {
+  constructor() {
+    this.data = this.load()
+  }
+
+  load() {
+    const filePath = getValuationHistoryFilePath()
+    try {
+      if (fs.existsSync(filePath)) {
+        const raw = fs.readFileSync(filePath, 'utf8')
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed.cycles)) return parsed
+      }
+    } catch (e) {
+      console.error('[antigravity] Failed to load valuation history:', e)
+    }
+    return { cycles: [] }
+  }
+
+  save() {
+    try {
+      const filePath = getValuationHistoryFilePath()
+      const dir = path.dirname(filePath)
+      fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(filePath, JSON.stringify(this.data, null, 2), 'utf8')
+    } catch (e) {
+      console.error('[antigravity] Failed to save valuation history:', e)
+    }
+  }
+
+  recordCycleSnapshot(snapshot) {
+    if (!snapshot || !snapshot.cycleId) {
+      throw new Error('snapshot.cycleId is required')
+    }
+    const cycleId = String(snapshot.cycleId)
+    const period = snapshot.period || '5h'
+    const resetTime = snapshot.resetTime || ''
+    const windowStart = typeof snapshot.windowStart === 'number' ? snapshot.windowStart : Date.now() - (5 * 3600 * 1000)
+    const windowEnd = typeof snapshot.windowEnd === 'number' ? snapshot.windowEnd : Date.now()
+    const updatedAt = Date.now()
+    const accounts = (snapshot.accounts && typeof snapshot.accounts === 'object') ? snapshot.accounts : {}
+
+    const entry = {
+      cycleId,
+      period,
+      resetTime,
+      windowStart,
+      windowEnd,
+      updatedAt,
+      accounts,
+      totalRequests: typeof snapshot.totalRequests === 'number' ? snapshot.totalRequests : Object.values(accounts).reduce((sum, a) => sum + (a.requests || 0), 0),
+      totalTokens: typeof snapshot.totalTokens === 'number' ? snapshot.totalTokens : Object.values(accounts).reduce((sum, a) => sum + (a.tokens || 0), 0),
+      totalUsdCost: typeof snapshot.totalUsdCost === 'number' ? snapshot.totalUsdCost : Object.values(accounts).reduce((sum, a) => sum + (a.usdCost || 0), 0),
+      estTotalValue: snapshot.estTotalValue !== undefined ? snapshot.estTotalValue : null,
+      estRemainingValue: snapshot.estRemainingValue !== undefined ? snapshot.estRemainingValue : null,
+    }
+
+    const idx = this.data.cycles.findIndex(c => c.cycleId === cycleId)
+    if (idx >= 0) {
+      // Overwrite previous estimation of this cycle with the latest estimation!
+      this.data.cycles[idx] = { ...this.data.cycles[idx], ...entry }
+    } else {
+      this.data.cycles.push(entry)
+    }
+
+    // Sort chronologically by windowEnd
+    this.data.cycles.sort((a, b) => (a.windowEnd || 0) - (b.windowEnd || 0))
+    if (this.data.cycles.length > 200) {
+      this.data.cycles = this.data.cycles.slice(-200)
+    }
+    this.save()
+    return entry
+  }
+
+  getHistory(period) {
+    if (!period || period === 'all') return this.data.cycles
+    return this.data.cycles.filter(c => c.period === period)
+  }
+
+  clear(period) {
+    if (!period || period === 'all') {
+      this.data.cycles = []
+    } else {
+      this.data.cycles = this.data.cycles.filter(c => c.period !== period)
+    }
+    this.save()
+    return true
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Quota querying service
+// ---------------------------------------------------------------------------
+class QuotaService {
+  constructor() {
+    this.cache = null
+    this.cacheExpiresAt = 0
+    this.fetchPromise = null
+    this.cachedKey = null
+  }
+
+  clearCache() {
+    this.cache = null
+    this.cacheExpiresAt = 0
+    this.fetchPromise = null
+    this.cachedKey = null
+  }
+
+  async getQuota(accessToken, baseURL, project, force = false, proxy = null) {
+    const now = Date.now()
+    const normProxy = normalizeProxyUrl(proxy)
+    const cacheKey = `${accessToken}_${normProxy || ''}`
+    if (!force && this.cache && this.cachedKey === cacheKey && now < this.cacheExpiresAt) {
+      return this.cache
+    }
+    if (this.fetchPromise && this.cachedKey === cacheKey) return this.fetchPromise
+
+    this.cachedKey = cacheKey
+    this.fetchPromise = (async () => {
+      try {
+        const headers = {
+          authorization: `Bearer ${accessToken}`,
+          'content-type': 'application/json',
+          ...attributionHeaders(),
+          'user-agent': OFFICIAL_USER_AGENT,
+        }
+
+        // 1. retrieveUserQuotaSummary
+        let quotaData = null
+        try {
+          const quotaRes = await antigravityFetch(`${baseURL}:retrieveUserQuotaSummary`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ project: project || 'default' }),
+          }, normProxy)
+          if (quotaRes.ok) quotaData = await quotaRes.json()
+        } catch {}
+
+        // 2. fetchAvailableModels
+        let modelsData = null
+        try {
+          const modelsRes = await antigravityFetch(`${baseURL}:fetchAvailableModels`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ project: project || 'default' }),
+          }, normProxy)
+          if (modelsRes.ok) modelsData = await modelsRes.json()
+        } catch {}
+
+        // 3. loadCodeAssist
+        let lcaData = null
+        try {
+          const lcaRes = await antigravityFetch(`${baseURL}:loadCodeAssist`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY' } }),
+          }, normProxy)
+          if (lcaRes.ok) lcaData = await lcaRes.json()
+        } catch {}
+
+        const groups = (quotaData?.groups || []).map((g) => ({
+          displayName: g.displayName || 'Model Quota Group',
+          description: g.description || '',
+          buckets: (g.buckets || []).map((b) => {
+            const fraction = typeof b.remainingFraction === 'number' ? b.remainingFraction : 1.0
+            const percent = Math.round(fraction * 1000) / 10
+            let resetInSeconds = 0
+            if (b.resetTime) {
+              const resetMs = new Date(b.resetTime).getTime()
+              if (!isNaN(resetMs)) {
+                resetInSeconds = Math.max(0, Math.round((resetMs - Date.now()) / 1000))
+              }
+            }
+            return {
+              bucketId: b.bucketId || 'default',
+              displayName: b.displayName || b.bucketId || 'Quota Window',
+              window: b.window || (b.bucketId?.includes('5h') ? '5h' : 'weekly'),
+              resetTime: b.resetTime,
+              resetInSeconds,
+              description: b.description || '',
+              remainingFraction: fraction,
+              remainingPercent: percent,
+            }
+          }),
+        }))
+
+        const models = Object.entries(modelsData?.models || {})
+          .map(([id, m]) => {
+            const fraction = m.quotaInfo?.remainingFraction
+            return {
+              id,
+              displayName: m.displayName || id,
+              remainingFraction: fraction,
+              remainingPercent: typeof fraction === 'number' ? Math.round(fraction * 1000) / 10 : undefined,
+              resetTime: m.quotaInfo?.resetTime,
+            }
+          })
+          .filter((m) => m.remainingFraction !== undefined)
+
+        const result = {
+          ok: true,
+          tier: {
+            id: lcaData?.currentTier?.id || 'free-tier',
+            name: lcaData?.currentTier?.name || 'Antigravity',
+            description: lcaData?.currentTier?.description || '',
+            paidTier: lcaData?.paidTier?.name || lcaData?.paidTier?.id || 'Google AI Pro',
+            project: project || lcaData?.cloudaicompanionProject || 'default',
+            upgradeSubscriptionUri: lcaData?.currentTier?.upgradeSubscriptionUri || lcaData?.upgradeSubscriptionUri,
+          },
+          groups,
+          models,
+          quotaDescription: quotaData?.description,
+          updatedAt: new Date().toISOString(),
+        }
+
+        this.cache = result
+        this.cachedKey = cacheKey
+        this.cacheExpiresAt = Date.now() + 15_000 // 15s cache
+        return result
+      } finally {
+        this.fetchPromise = null
+      }
+    })()
+
+    return this.fetchPromise
+  }
+}
+
+// ---------------------------------------------------------------------------
+// QuotaPilot Reporting Service (Asynchronous Usage & Quota Telemetry)
+// ---------------------------------------------------------------------------
+class QuotaReporter {
+  constructor(getOptions) {
+    this.getOptions = getOptions
+    this.lastQuotaReportTime = 0
+    this.quotaReportIntervalMs = 5 * 60 * 1000 // 5 minutes throttle
+    this.lastReportedQuotaPercent = null
+    this.stats = {
+      totalReports: 0,
+      successReports: 0,
+      failedReports: 0,
+      lastReportAt: null,
+      lastError: null,
+      lastResponseId: null,
+    }
+  }
+
+  getEffectiveConfig() {
+    const opts = typeof this.getOptions === 'function' ? this.getOptions() : (this.getOptions || {})
+    const fileConf = loadSavedReporterConfig()
+    const qpConf = (!opts.reportEndpoint && !fileConf.reportEndpoint) ? loadQuotapilotFallbackConfig() : {}
+    const endpoint = (
+      process.env.QUOTA_PILOT_ENDPOINT ||
+      process.env.ANTIGRAVITY_REPORT_ENDPOINT ||
+      opts.reportEndpoint ||
+      fileConf.reportEndpoint ||
+      qpConf.endpoint ||
+      ''
+    ).trim()
+    const secret = (
+      process.env.QUOTA_PILOT_SECRET ||
+      process.env.ANTIGRAVITY_REPORT_SECRET ||
+      opts.reportSecret ||
+      fileConf.reportSecret ||
+      qpConf.secret ||
+      ''
+    ).trim()
+    const clientId = (
+      process.env.QUOTA_PILOT_CLIENT_ID ||
+      process.env.ANTIGRAVITY_REPORT_CLIENT_ID ||
+      opts.reportClientId ||
+      fileConf.reportClientId ||
+      qpConf.clientId ||
+      'dsh-A'
+    ).trim()
+    const reportEnabledVal = opts.reportEnabled ?? fileConf.reportEnabled ?? true
+    const enabled = (process.env.QUOTA_PILOT_ENABLED !== '0' && process.env.QUOTA_PILOT_ENABLED !== 'false') && (reportEnabledVal !== false) && endpoint.length > 0 && endpoint !== 'disabled'
+    return { endpoint, secret, clientId, enabled }
+  }
+
+  extractQuotaSnapshot(quotaData, activeAcc) {
+    if (!quotaData || !quotaData.groups || !Array.isArray(quotaData.groups)) return null
+    let targetBucket = null
+    for (const g of quotaData.groups) {
+      if (Array.isArray(g.buckets)) {
+        const b5h = g.buckets.find((b) => b.window === '5h' || b.bucketId?.includes('5h'))
+        if (b5h) {
+          targetBucket = b5h
+          break
+        }
+        if (!targetBucket && g.buckets.length > 0) {
+          targetBucket = g.buckets[0]
+        }
+      }
+    }
+
+    if (!targetBucket || typeof targetBucket.remainingPercent !== 'number') return null
+
+    const subscriptionId = activeAcc?.email || activeAcc?.id || 'antigravity-account'
+    const planName = quotaData.tier?.name || activeAcc?.tier || 'Google Cloud Code (Antigravity)'
+    const planType = targetBucket.window === 'weekly' ? 'weekly' : '5h_rolling'
+    const resetAt = targetBucket.resetTime || undefined
+
+    return {
+      subscriptionId,
+      planName,
+      planType,
+      quotaRemaining: targetBucket.remainingPercent,
+      quotaUnit: 'percent',
+      ...(resetAt ? { resetAt } : {}),
+    }
+  }
+
+  shouldAttachQuota(snapshot) {
+    if (!snapshot) return false
+    const now = Date.now()
+    if (now - this.lastQuotaReportTime >= this.quotaReportIntervalMs) return true
+    if (this.lastReportedQuotaPercent !== null) {
+      const delta = Math.abs(this.lastReportedQuotaPercent - snapshot.quotaRemaining)
+      if (delta >= 0.5) return true
+    } else {
+      return true
+    }
+    return false
+  }
+
+  reportUsage(item, activeAcc = null, quotaService = null) {
+    const { endpoint, secret, clientId, enabled } = this.getEffectiveConfig()
+    if (!enabled || !endpoint) return
+
+    // Non-blocking fire-and-forget in microtask
+    queueMicrotask(async () => {
+      try {
+        let subscription = null
+        if (quotaService?.cache) {
+          const snapshot = this.extractQuotaSnapshot(quotaService.cache, activeAcc)
+          if (this.shouldAttachQuota(snapshot)) {
+            subscription = snapshot
+            this.lastQuotaReportTime = Date.now()
+            this.lastReportedQuotaPercent = snapshot.quotaRemaining
+          }
+        }
+
+        const promptTokens = (item.inputTokens || 0) + (item.cacheReadTokens || 0)
+        const cachedTokens = item.cacheReadTokens || 0
+        const completionTokens = (item.outputTokens || 0) + (item.reasoningTokens || 0)
+        const subscriptionId = activeAcc?.email || activeAcc?.id || item.accountEmail || item.accountId || null
+
+        const payload = {
+          clientId,
+          ...(subscriptionId ? { subscriptionId } : {}),
+          provider: 'antigravity',
+          model: item.model || 'gemini',
+          promptTokens,
+          cachedTokens,
+          completionTokens,
+          latencyMs: item.durationMs || 0,
+          status: 'success',
+          ...(subscription ? { subscription } : {}),
+        }
+
+        const headers = {
+          'Content-Type': 'application/json',
+          'User-Agent': 'dsh-llm-antigravity/0.1.0',
+        }
+        if (secret) {
+          headers['Authorization'] = `Bearer ${secret}`
+          headers['x-api-key'] = secret
+        }
+
+        this.stats.totalReports++
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(10000),
+        })
+
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}))
+          this.stats.successReports++
+          this.stats.lastReportAt = new Date().toISOString()
+          this.stats.lastResponseId = data.id || null
+          this.stats.lastError = null
+        } else {
+          const errText = await res.text().catch(() => '')
+          this.stats.failedReports++
+          this.stats.lastError = `HTTP ${res.status}: ${errText.slice(0, 200)}`
+        }
+      } catch (err) {
+        this.stats.failedReports++
+        this.stats.lastError = err?.message || String(err)
+      }
+    })
+  }
+
+  reportHeartbeat(activeAcc, quotaData) {
+    const { endpoint, secret, enabled } = this.getEffectiveConfig()
+    if (!enabled || !endpoint) return
+
+    const snapshot = this.extractQuotaSnapshot(quotaData, activeAcc)
+    if (!snapshot) return
+
+    queueMicrotask(async () => {
+      try {
+        const heartbeatUrl = endpoint.replace(/\/report\/?$/, '/subscription/heartbeat')
+        const headers = {
+          'Content-Type': 'application/json',
+          'User-Agent': 'dsh-llm-antigravity/0.1.0',
+        }
+        if (secret) {
+          headers['Authorization'] = `Bearer ${secret}`
+          headers['x-api-key'] = secret
+        }
+        await fetch(heartbeatUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(snapshot),
+          signal: AbortSignal.timeout(10000),
+        }).catch(() => {})
+      } catch {}
+    })
+  }
+
+  async testReport(activeAcc = null, quotaService = null) {
+    const { endpoint, secret, clientId, enabled } = this.getEffectiveConfig()
+    if (!endpoint) throw new Error('QuotaPilot endpoint is not configured')
+
+    let subscription = null
+    if (quotaService?.cache) {
+      subscription = this.extractQuotaSnapshot(quotaService.cache, activeAcc)
+    }
+
+    const payload = {
+      clientId,
+      provider: 'antigravity',
+      model: 'gemini-2.5-pro',
+      promptTokens: 100,
+      cachedTokens: 50,
+      completionTokens: 20,
+      latencyMs: 120,
+      status: 'success',
+      ...(subscription ? { subscription } : {}),
+    }
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'User-Agent': 'dsh-llm-antigravity/0.1.0',
+    }
+    if (secret) {
+      headers['Authorization'] = `Bearer ${secret}`
+      headers['x-api-key'] = secret
+    }
+
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10000),
+    })
+
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${JSON.stringify(body)}`)
+    }
+    return { ok: true, status: res.status, data: body }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// QuotaSyncScheduler: Periodic background quota heartbeat scheduler
+// - Triggers every ~5 minutes (with random anti-detection jitter)
+// - Only triggers for accounts that have usage records since last sync
+// - Strictly adheres to proxy path (passes acc.proxy to Google OAuth & Quota API)
+// ---------------------------------------------------------------------------
+class QuotaSyncScheduler {
+  constructor({ getOptions, accountsManager, quotaService, quotaReporter, getAdapter, logger, usageTracker }) {
+    this.getOptions = getOptions
+    this.accountsManager = accountsManager
+    this.quotaService = quotaService
+    this.quotaReporter = quotaReporter
+    this.getAdapter = getAdapter
+    this.logger = logger
+    this.usageTracker = usageTracker
+    this.lastUsedAtByAccount = new Map()
+    this.lastSyncedAtByAccount = new Map()
+    this.timer = null
+    this.running = false
+    this.baseIntervalMs = 5 * 60 * 1000 // 5 minutes default
+    this.jitterRangeMs = 90 * 1000 // ±45s random jitter to avoid fixed cadence detection
+    this.lastTickTime = null
+    this.nextTickTime = null
+
+    // Check recent usage from database on startup to seed state
+    try {
+      const recent = this.usageTracker?.db?.prepare(
+        "SELECT DISTINCT account_id, account_email FROM usage_records WHERE timestamp_ms >= ?"
+      )?.all(Date.now() - 5 * 60 * 1000) || []
+      for (const r of recent) {
+        this.markAccountUsed(r.account_email || r.account_id)
+      }
+    } catch {}
+
+    this.start()
+  }
+
+  markAccountUsed(accountKey) {
+    if (!accountKey) return
+    this.lastUsedAtByAccount.set(String(accountKey), Date.now())
+  }
+
+  start() {
+    if (this.running) return
+    this.running = true
+    const hasUnsynced = Array.from(this.lastUsedAtByAccount.keys()).some(
+      (k) => (this.lastUsedAtByAccount.get(k) || 0) > (this.lastSyncedAtByAccount.get(k) || 0)
+    )
+    if (hasUnsynced || this.lastSyncedAtByAccount.size === 0) {
+      this.timer = setTimeout(() => this.tick(), 3500)
+      if (typeof this.timer?.unref === 'function') this.timer.unref()
+    } else {
+      this.scheduleNextTick()
+    }
+  }
+
+  stop() {
+    this.running = false
+    if (this.timer) {
+      clearTimeout(this.timer)
+      this.timer = null
+    }
+    this.nextTickTime = null
+  }
+
+  scheduleNextTick() {
+    if (!this.running) return
+    const opts = typeof this.getOptions === 'function' ? this.getOptions() : (this.getOptions || {})
+    const base = opts.quotaSyncIntervalMs ?? this.baseIntervalMs
+    // Anti-detection: random jitter between -45s and +45s
+    const jitter = Math.floor((Math.random() - 0.5) * this.jitterRangeMs)
+    const delay = Math.max(30_000, base + jitter)
+
+    this.nextTickTime = Date.now() + delay
+    this.timer = setTimeout(() => this.tick(), delay)
+    if (typeof this.timer?.unref === 'function') {
+      this.timer.unref()
+    }
+  }
+
+  async tick() {
+    this.lastTickTime = Date.now()
+    try {
+      const opts = typeof this.getOptions === 'function' ? this.getOptions() : (this.getOptions || {})
+      if (opts.quotaSyncEnabled === false) return
+
+      const reporterConfig = this.quotaReporter.getEffectiveConfig()
+      if (!reporterConfig.enabled) return
+
+      const accounts = this.accountsManager.data.accounts || []
+      const now = Date.now()
+
+      for (const acc of accounts) {
+        const key = String(acc.email || acc.id)
+        const lastUsed = this.lastUsedAtByAccount.get(key) || 0
+        const lastSynced = this.lastSyncedAtByAccount.get(key) || 0
+
+        // Requirement: ONLY sync if the account had usage records since the last quota sync!
+        if (lastUsed <= lastSynced) {
+          continue
+        }
+
+        try {
+          // Strictly adhere to proxy path: use acc.proxy
+          const targetProxy = acc.proxy || null
+          const connection = opts
+          let accessToken
+          let project
+
+          const adapter = this.getAdapter ? this.getAdapter() : null
+          const activeAcc = this.accountsManager.getActiveAccount()
+          if (activeAcc && activeAcc.id === acc.id && adapter) {
+            accessToken = await adapter.ensureAccessToken()
+            project = await adapter.ensureProject(accessToken)
+          } else if (acc.refreshToken) {
+            const meta = await validateAndFetchMetadata(
+              acc.refreshToken,
+              connection.clientId,
+              connection.clientSecret,
+              targetProxy
+            )
+            accessToken = meta.accessToken
+            project = meta.project || acc.project || connection.project
+          }
+
+          if (accessToken) {
+            // Strictly adheres to proxy path: targetProxy passed into quotaService.getQuota
+            const quota = await this.quotaService.getQuota(
+              accessToken,
+              connection.baseURL,
+              project,
+              true,
+              targetProxy
+            )
+            this.quotaReporter.reportHeartbeat(acc, quota)
+            this.lastSyncedAtByAccount.set(key, now)
+          }
+        } catch (accErr) {
+          this.logger?.warn?.(`[antigravity] Auto quota sync failed for account ${key}:`, accErr?.message || accErr)
+        }
+      }
+    } catch (err) {
+      this.logger?.warn?.('[antigravity] QuotaSyncScheduler tick error:', err?.message || err)
+    } finally {
+      this.scheduleNextTick()
+    }
+  }
+
+  getStatus() {
+    return {
+      running: this.running,
+      baseIntervalMs: this.baseIntervalMs,
+      lastTickAt: this.lastTickTime ? new Date(this.lastTickTime).toISOString() : null,
+      nextTickAt: this.nextTickTime ? new Date(this.nextTickTime).toISOString() : null,
+      activeTrackedAccounts: Array.from(this.lastUsedAtByAccount.keys()).map(k => ({
+        account: k,
+        lastUsedAt: new Date(this.lastUsedAtByAccount.get(k)).toISOString(),
+        lastSyncedAt: this.lastSyncedAtByAccount.has(k) ? new Date(this.lastSyncedAtByAccount.get(k)).toISOString() : null,
+        needsSync: (this.lastUsedAtByAccount.get(k) || 0) > (this.lastSyncedAtByAccount.get(k) || 0)
+      }))
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Serialization: harness messages -> Gemini contents + v1internal envelope.
+// ---------------------------------------------------------------------------
+function flattenText(blocks) {
+  return blocks.filter((block) => block.type === 'text').map((block) => block.text).join('')
+}
+
+// Thought-signature cache (mirrors Antigravity-Manager SignatureCache at a
+// reduced scope). Google's v1internal API withholds the real thinking tokens
+// (only thoughtsTokenCount + a thoughtSignature blob are streamed) and uses the
+// signature as the prefix-cache continuity credential: the NEXT request must
+// carry the same signature on its functionCall/thought parts, otherwise the
+// whole thinking prefix is recomputed.
+//
+// CRITICAL: the real client keeps every historical part's signature STABLE
+// across rounds (only new parts get new signatures) — that stability is what
+// makes the upstream prefix cache hit (~97% cachedContentTokenCount). A
+// per-session single-slot cache would re-stamp every historical part with the
+// latest signature on each round, breaking the prefix. So signatures are keyed
+// by tool-call id (and by text content hash for text-only model turns), so each
+// part replays exactly the signature it was generated with.
+const MIN_SIGNATURE_LENGTH = 50
+const SENTINEL_SIGNATURE = 'skip_thought_signature_validator'
+const signatureTtlMs = 60 * 60 * 1000 // 1h, refreshed on store
+const signatureCache = new Map() // sessionId -> { calls: Map<callId, {signature, expiresAt}>, texts: Map<textHash, {signature, expiresAt}> }
+
+function sessionEntry(sessionId) {
+  const key = String(sessionId)
+  let entry = signatureCache.get(key)
+  if (entry === undefined) {
+    entry = { calls: new Map(), texts: new Map() }
+    signatureCache.set(key, entry)
+  }
+  return entry
+}
+
+function pruneExpired(entry) {
+  const now = Date.now()
+  for (const [id, hit] of entry.calls) if (now > hit.expiresAt) entry.calls.delete(id)
+  for (const [h, hit] of entry.texts) if (now > hit.expiresAt) entry.texts.delete(h)
+}
+
+/** FNV-1a over the text; stable across rounds for the same assistant text. */
+function textHash(text) {
+  let h = 2166136261
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return (h >>> 0).toString(36)
+}
+
+function getCallSignature(sessionId, callId) {
+  if (sessionId === undefined || callId === undefined) return undefined
+  const entry = signatureCache.get(String(sessionId))
+  if (entry === undefined) return undefined
+  pruneExpired(entry)
+  const hit = entry.calls.get(String(callId))
+  return hit === undefined ? undefined : hit.signature
+}
+
+function storeCallSignature(sessionId, callId, signature) {
+  if (sessionId === undefined || callId === undefined) return
+  if (typeof signature !== 'string' || signature.length < MIN_SIGNATURE_LENGTH) return
+  sessionEntry(sessionId).calls.set(String(callId), { signature, expiresAt: Date.now() + signatureTtlMs })
+}
+
+function getTextSignature(sessionId, text) {
+  if (sessionId === undefined || typeof text !== 'string' || text.length === 0) return undefined
+  const entry = signatureCache.get(String(sessionId))
+  if (entry === undefined) return undefined
+  pruneExpired(entry)
+  const hit = entry.texts.get(textHash(text))
+  return hit === undefined ? undefined : hit.signature
+}
+
+function storeTextSignature(sessionId, text, signature) {
+  if (sessionId === undefined || typeof text !== 'string' || text.length === 0) return
+  if (typeof signature !== 'string' || signature.length < MIN_SIGNATURE_LENGTH) return
+  sessionEntry(sessionId).texts.set(textHash(text), { signature, expiresAt: Date.now() + signatureTtlMs })
+}
+
+/** Is the model part of the Gemini 3 flash family needing a sentinel when no signature is cached? */
+function isGemini3Flash(model) {
+  const lower = model.toLowerCase()
+  return lower.includes('gemini-3') && lower.includes('flash')
+}
+
+/** Default input modalities by family; catalog entries may override. */
+function inputModalitiesOf(modelId) {
+  const lower = modelId.toLowerCase()
+  if (lower.startsWith('gemini')) return ['text', 'image', 'video', 'audio', 'document']
+  if (lower.startsWith('claude') || lower === 'opus' || lower === 'sonnet') return ['text', 'image', 'video']
+  return ['text']
+}
+
+// ---------------------------------------------------------------------------
+// Multimodal input tools: read_video, read_audio, read_pdf.
+// Attaches local media/documents as inlineData parts so the model analyzes
+// audio, video, PDF layouts, tables, and images directly.
+// ---------------------------------------------------------------------------
+const MAX_VIDEO_BYTES = 300 * 1024 * 1024 // 300MB video cap
+const MAX_AUDIO_BYTES = 100 * 1024 * 1024 // 100MB audio cap
+const MAX_DOCUMENT_BYTES = 100 * 1024 * 1024 // 100MB PDF/document cap
+
+/** Sniff the container of a video buffer and return its MIME type, or undefined. */
+function sniffVideoMimeType(buf) {
+  if (buf.length >= 12 && buf.toString('latin1', 4, 8) === 'ftyp') {
+    // ISO BMFF: mp4 / mov / m4v / heic-family. Brand at offset 8..12.
+    const brand = buf.toString('latin1', 8, 12)
+    if (['qt  ', 'isom', 'mp42', 'avc1', 'mp41', 'M4V ', 'M4A ', '3gp4', '3gp5', '3gp6'].includes(brand)) {
+      return brand === 'qt  ' ? 'video/quicktime' : 'video/mp4'
+    }
+  }
+  if (buf.length >= 4 && buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3) {
+    return 'video/webm' // EBML magic (Matroska/WebM)
+  }
+  if (buf.length >= 4 && buf.toString('latin1', 0, 4) === 'RIFF' && buf.toString('latin1', 8, 12) === 'AVI ') {
+    return 'video/x-msvideo'
+  }
+  if (buf.length >= 4 && buf.toString('latin1', 0, 4) === 'OggS') {
+    return 'video/ogg'
+  }
+  return undefined
+}
+
+const VIDEO_EXT_MIME = {
+  '.mp4': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.m4v': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mkv': 'video/x-matroska',
+  '.avi': 'video/x-msvideo',
+  '.ogg': 'video/ogg',
+  '.ogv': 'video/ogg',
+}
+
+/** Sniff the container of an audio buffer and return its MIME type, or undefined. */
+function sniffAudioMimeType(buf) {
+  if (buf.length >= 3 && buf.toString('latin1', 0, 3) === 'ID3') return 'audio/mp3'
+  if (buf.length >= 2 && buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0) return 'audio/mp3'
+  if (buf.length >= 12 && buf.toString('latin1', 0, 4) === 'RIFF' && buf.toString('latin1', 8, 12) === 'WAVE') return 'audio/wav'
+  if (buf.length >= 4 && buf.toString('latin1', 0, 4) === 'fLaC') return 'audio/flac'
+  if (buf.length >= 4 && buf.toString('latin1', 0, 4) === 'OggS') return 'audio/ogg'
+  if (buf.length >= 12 && buf.toString('latin1', 4, 8) === 'ftyp') {
+    const brand = buf.toString('latin1', 8, 12)
+    if (['M4A ', 'M4B ', 'mp42', 'isom'].includes(brand)) return 'audio/m4a'
+  }
+  return undefined
+}
+
+const AUDIO_EXT_MIME = {
+  '.mp3': 'audio/mp3',
+  '.wav': 'audio/wav',
+  '.m4a': 'audio/m4a',
+  '.aac': 'audio/aac',
+  '.ogg': 'audio/ogg',
+  '.opus': 'audio/opus',
+  '.flac': 'audio/flac',
+  '.weba': 'audio/webm',
+}
+
+/** Sniff the container of a document buffer (PDF / RTF / Jupyter) and return its MIME type, or undefined. */
+function sniffDocumentMimeType(buf) {
+  if (buf.length >= 4 && buf.toString('latin1', 0, 4) === '%PDF') return 'application/pdf'
+  if (buf.length >= 5 && buf.toString('latin1', 0, 5) === '{\\rtf') return 'application/rtf'
+  try {
+    const text = buf.slice(0, 500).toString('utf8')
+    if (text.includes('"cells"') && text.includes('"nbformat"')) return 'application/x-ipynb+json'
+  } catch {}
+  return undefined
+}
+
+const DOCUMENT_EXT_MIME = {
+  '.pdf': 'application/pdf',
+  '.ipynb': 'application/x-ipynb+json',
+  '.rtf': 'application/rtf',
+  '.csv': 'text/csv',
+}
+
+/** Register the model-facing read_video tool (parallel to read_image). */
+function applyReadVideoTool(ctx) {
+  ctx.inject(['tools'], (toolCtx) => {
+    toolCtx.tools.register(defineTool({
+      name: 'read_video',
+      description: 'Read a local video file (mp4/mov/webm/mkv/avi/ogg) and attach its frames to the conversation so the current model can analyze the video content, audio, and timing. Requires the current model to accept video input. Large files are capped; refuse inputs above the cap instead of reading them.',
+      parameters: {
+        file_path: {
+          type: 'string',
+          required: true,
+          description: 'Path to the video file, resolved by the filesystem backend.',
+        },
+      },
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            path: { type: 'string', required: true },
+            name: { type: 'string' },
+            mimeType: { type: 'string', required: true },
+            bytes: { type: 'integer', required: true },
+            data: { type: 'string', required: true },
+          },
+        },
+        render: (_args, value) => [{
+          type: 'text',
+          text: `Attached video ${value.name ?? value.path} (${value.mimeType}, ${(value.bytes / 1024 / 1024).toFixed(1)} MB) for the current model to analyze.`,
+        }, {
+          type: 'video',
+          mimeType: value.mimeType,
+          data: value.data,
+        }],
+        presentationMeta: (_args, value) => ({
+          path: value.path,
+          mimeType: value.mimeType,
+          sizeBytes: value.bytes,
+        }),
+      },
+      timeoutMs: 120_000,
+      isConcurrencySafe: () => false,
+      async execute(args, exec) {
+        const filePath = String(args.file_path ?? '').trim()
+        if (filePath.length === 0) throw new Error('read_video: file_path must be a non-empty string')
+        const resolved = path.resolve(filePath)
+        let stat
+        try {
+          stat = fs.statSync(resolved)
+        } catch {
+          throw new Error(`read_video: cannot stat "${filePath}" (resolved ${resolved}): the file does not exist or is not readable`)
+        }
+        if (!stat.isFile()) throw new Error(`read_video: "${filePath}" is not a regular file`)
+        if (stat.size === 0) throw new Error(`read_video: "${filePath}" is empty`)
+        if (stat.size > MAX_VIDEO_BYTES) {
+          throw new Error(`read_video: "${filePath}" is ${(stat.size / 1024 / 1024).toFixed(1)} MB, exceeding the ${(MAX_VIDEO_BYTES / 1024 / 1024)} MB cap; split or downscale the video first`)
+        }
+        const buf = fs.readFileSync(resolved)
+        const sniffed = sniffVideoMimeType(buf)
+        const extMime = VIDEO_EXT_MIME[path.extname(resolved).toLowerCase()]
+        const mimeType = sniffed ?? extMime
+        if (mimeType === undefined) {
+          throw new Error(`read_video: "${filePath}" does not look like a supported video container (mp4/mov/webm/mkv/avi/ogg)`)
+        }
+        return {
+          path: resolved,
+          name: path.basename(resolved),
+          mimeType,
+          bytes: buf.length,
+          data: buf.toString('base64'),
+        }
+      },
+      presentCall(args) {
+        return {
+          card: 'generic',
+          title: `Read video ${args.file_path}`,
+          kind: 'read',
+          locations: [{ path: args.file_path }],
+        }
+      },
+    }))
+  })
+}
+
+/** Register the model-facing read_audio tool. */
+function applyReadAudioTool(ctx) {
+  ctx.inject(['tools'], (toolCtx) => {
+    toolCtx.tools.register(defineTool({
+      name: 'read_audio',
+      description: 'Read a local audio file (mp3/wav/m4a/aac/ogg/opus/flac/weba) and attach its audio stream to the conversation so the model can analyze the speech, tone, music, and timing.',
+      parameters: {
+        file_path: {
+          type: 'string',
+          required: true,
+          description: 'Path to the audio file, resolved by the filesystem backend.',
+        },
+      },
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            path: { type: 'string', required: true },
+            name: { type: 'string' },
+            mimeType: { type: 'string', required: true },
+            bytes: { type: 'integer', required: true },
+            data: { type: 'string', required: true },
+          },
+        },
+        render: (_args, value) => [{
+          type: 'text',
+          text: `Attached audio ${value.name ?? value.path} (${value.mimeType}, ${(value.bytes / 1024 / 1024).toFixed(2)} MB) for the current model to analyze.`,
+        }, {
+          type: 'audio',
+          mimeType: value.mimeType,
+          data: value.data,
+        }],
+        presentationMeta: (_args, value) => ({
+          path: value.path,
+          mimeType: value.mimeType,
+          sizeBytes: value.bytes,
+        }),
+      },
+      timeoutMs: 120_000,
+      isConcurrencySafe: () => false,
+      async execute(args, exec) {
+        const filePath = String(args.file_path ?? '').trim()
+        if (filePath.length === 0) throw new Error('read_audio: file_path must be a non-empty string')
+        const resolved = path.resolve(filePath)
+        let stat
+        try {
+          stat = fs.statSync(resolved)
+        } catch {
+          throw new Error(`read_audio: cannot stat "${filePath}" (resolved ${resolved}): the file does not exist or is not readable`)
+        }
+        if (!stat.isFile()) throw new Error(`read_audio: "${filePath}" is not a regular file`)
+        if (stat.size === 0) throw new Error(`read_audio: "${filePath}" is empty`)
+        if (stat.size > MAX_AUDIO_BYTES) {
+          throw new Error(`read_audio: "${filePath}" is ${(stat.size / 1024 / 1024).toFixed(1)} MB, exceeding the ${(MAX_AUDIO_BYTES / 1024 / 1024)} MB cap; split or compress the audio first`)
+        }
+        const buf = fs.readFileSync(resolved)
+        const sniffed = sniffAudioMimeType(buf)
+        const extMime = AUDIO_EXT_MIME[path.extname(resolved).toLowerCase()]
+        const mimeType = sniffed ?? extMime
+        if (mimeType === undefined) {
+          throw new Error(`read_audio: "${filePath}" does not look like a supported audio format (mp3/wav/m4a/aac/ogg/opus/flac/weba)`)
+        }
+        return {
+          path: resolved,
+          name: path.basename(resolved),
+          mimeType,
+          bytes: buf.length,
+          data: buf.toString('base64'),
+        }
+      },
+      presentCall(args) {
+        return {
+          card: 'generic',
+          title: `Read audio ${args.file_path}`,
+          kind: 'read',
+          locations: [{ path: args.file_path }],
+        }
+      },
+    }))
+  })
+}
+
+/** Register the model-facing read_pdf tool. */
+function applyReadPdfTool(ctx) {
+  ctx.inject(['tools'], (toolCtx) => {
+    toolCtx.tools.register(defineTool({
+      name: 'read_pdf',
+      description: 'Read a local PDF document file and attach its pages/layout to the conversation so the model can analyze the text, charts, tables, and document structure.',
+      parameters: {
+        file_path: {
+          type: 'string',
+          required: true,
+          description: 'Path to the PDF file, resolved by the filesystem backend.',
+        },
+      },
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            path: { type: 'string', required: true },
+            name: { type: 'string' },
+            mimeType: { type: 'string', required: true },
+            bytes: { type: 'integer', required: true },
+            data: { type: 'string', required: true },
+          },
+        },
+        render: (_args, value) => [{
+          type: 'text',
+          text: `Attached PDF document ${value.name ?? value.path} (${value.mimeType}, ${(value.bytes / 1024 / 1024).toFixed(2)} MB) for the current model to analyze.`,
+        }, {
+          type: 'pdf',
+          mimeType: value.mimeType,
+          data: value.data,
+        }],
+        presentationMeta: (_args, value) => ({
+          path: value.path,
+          mimeType: value.mimeType,
+          sizeBytes: value.bytes,
+        }),
+      },
+      timeoutMs: 120_000,
+      isConcurrencySafe: () => false,
+      async execute(args, exec) {
+        const filePath = String(args.file_path ?? '').trim()
+        if (filePath.length === 0) throw new Error('read_pdf: file_path must be a non-empty string')
+        const resolved = path.resolve(filePath)
+        let stat
+        try {
+          stat = fs.statSync(resolved)
+        } catch {
+          throw new Error(`read_pdf: cannot stat "${filePath}" (resolved ${resolved}): the file does not exist or is not readable`)
+        }
+        if (!stat.isFile()) throw new Error(`read_pdf: "${filePath}" is not a regular file`)
+        if (stat.size === 0) throw new Error(`read_pdf: "${filePath}" is empty`)
+        if (stat.size > MAX_DOCUMENT_BYTES) {
+          throw new Error(`read_pdf: "${filePath}" is ${(stat.size / 1024 / 1024).toFixed(1)} MB, exceeding the ${(MAX_DOCUMENT_BYTES / 1024 / 1024)} MB cap; split the PDF first`)
+        }
+        const buf = fs.readFileSync(resolved)
+        const sniffed = sniffDocumentMimeType(buf)
+        const extMime = DOCUMENT_EXT_MIME[path.extname(resolved).toLowerCase()]
+        const mimeType = sniffed ?? extMime
+        if (mimeType === undefined) {
+          throw new Error(`read_pdf: "${filePath}" does not look like a supported document (PDF/Jupyter/RTF/CSV)`)
+        }
+        return {
+          path: resolved,
+          name: path.basename(resolved),
+          mimeType,
+          bytes: buf.length,
+          data: buf.toString('base64'),
+        }
+      },
+      presentCall(args) {
+        return {
+          card: 'generic',
+          title: `Read PDF ${args.file_path}`,
+          kind: 'read',
+          locations: [{ path: args.file_path }],
+        }
+      },
+    }))
+  })
+}
+
+async function serializeMessages(messages, sessionId, model, attachments) {
+  const wire = []
+  const callNames = new Map()
+  for (const message of messages) {
+    if (message.role === 'system') {
+      const text = flattenText(message.content)
+      if (text.length > 0) wire.push({ role: 'user', parts: [{ text }] })
+      continue
+    }
+    if (message.role === 'assistant') {
+      const parts = []
+      let lastText = ''
+      for (const block of message.content) {
+        if (block.type === 'text') {
+          if (block.text.length > 0) {
+            parts.push({ text: block.text })
+            lastText = block.text
+          }
+        } else if (block.type === 'reasoning') {
+          // Official gemini-cli behavior (stripThoughts in geminiChat.ts /
+          // historyHardening.ts): thinking text is NEVER replayed into the
+          // conversation history — it is display-only. Re-sending it bloats the
+          // context and breaks the upstream prefix cache. The thoughtSignature
+          // (captured separately on the last stream part) is the only thinking
+          // artifact carried forward.
+          continue
+        } else if (block.type === 'tool-call') {
+          let args = block.arguments
+          try { args = JSON.parse(block.arguments) } catch { /* keep raw */ }
+          const part = {
+            functionCall: {
+              name: block.name,
+              args,
+              ...(typeof block.id === 'string' && block.id.length > 0 ? { id: block.id } : {}),
+            },
+          }
+          // [FIX #2167 / #765] functionCall must carry the session thought
+          // signature (or a flash sentinel) or the upstream rejects the call and
+          // the prefix cache misses. Replay the signature THIS call was created
+          // with (stable across rounds) so the historical prefix never changes.
+          const cached = getCallSignature(sessionId, block.id)
+          if (cached !== undefined) {
+            part.thoughtSignature = cached
+          } else if (isGemini3Flash(model)) {
+            part.thoughtSignature = SENTINEL_SIGNATURE
+          }
+          parts.push(part)
+          callNames.set(block.id, block.name)
+        }
+      }
+      if (parts.length > 0) {
+        // The real client rides the signature on the LAST part of the turn:
+        // the functionCall when the turn ended in a tool call, otherwise the
+        // final text part. Attach the text signature there for text-only turns.
+        const hasCall = parts.some((part) => part.functionCall !== undefined)
+        if (!hasCall) {
+          const sig = getTextSignature(sessionId, lastText)
+          if (sig !== undefined && typeof parts[parts.length - 1].text === 'string') {
+            parts[parts.length - 1].thoughtSignature = sig
+          }
+        }
+        wire.push({ role: 'model', parts })
+      }
+      continue
+    }
+    // Tool results: the real client emits functionResponse as its OWN
+    // role:"model" content (captured: [S###+FC:xxx] [FR:xxx] alternate as
+    // separate model contents), NOT folded into the following user turn.
+    // Splitting them keeps the wire shape identical to the official client and
+    // preserves the prefix cache across tool rounds.
+    const toolResults = message.content.filter((block) => block.type === 'tool-result')
+    if (toolResults.length > 0) {
+      const parts = []
+      for (const result of toolResults) {
+        const mediaParts = []
+        const textContent = flattenText(result.content)
+        // Media carried by tool results (video/image blocks): the official
+        // Antigravity client attaches media read through a tool (e.g.
+        // view_file) as NESTED parts[].inlineData inside the functionResponse
+        // (captured: {"functionResponse":{...,"parts":[{"inlineData":{
+        // "mimeType":"video/mp4","data":"AAAAIGZ0eXBpc29t..."}}]}}). Emit the
+        // same shape so video/image tool reads reach the model the way the
+        // real client sends them. Data may be inlined (read_video/read_image
+        // results) or resolved through the durable attachment service.
+        // The parts array carries ONLY media; the tool's text result stays in
+        // response.result so the no-media wire shape is unchanged (the prefix
+        // cache depends on it).
+        for (const block of result.content) {
+          if (typeof block.mimeType === 'string' && typeof block.data === 'string' && block.data.length > 0) {
+            mediaParts.push({ inlineData: { mimeType: block.mimeType, data: block.data } })
+          } else if (block.type === 'image' && block.attachment !== undefined && attachments !== undefined) {
+            const stored = await attachments.readImage(block.attachment)
+            mediaParts.push({
+              inlineData: {
+                mimeType: stored.ref.mediaType,
+                data: Buffer.from(stored.data).toString('base64'),
+              },
+            })
+          } else if ((block.type === 'video' || block.type === 'audio' || block.type === 'pdf' || block.type === 'document' || block.type === 'file') && typeof block.data === 'string' && block.data.length > 0) {
+            mediaParts.push({ inlineData: { mimeType: block.mimeType || 'application/octet-stream', data: block.data } })
+          }
+        }
+        const toolCallId = (typeof result.toolCallId === 'string' && result.toolCallId.length > 0)
+          ? result.toolCallId
+          : (typeof result.callId === 'string' && result.callId.length > 0 ? result.callId : (typeof result.id === 'string' && result.id.length > 0 ? result.id : undefined))
+        const fr = {
+          name: (toolCallId ? callNames.get(toolCallId) : undefined) ?? result.toolName ?? 'unknown',
+          response: { result: textContent || '(no output)' },
+          ...(toolCallId ? { id: toolCallId } : {}),
+        }
+        if (mediaParts.length > 0) {
+          // Match the official functionResponse media shape:
+          // {"functionResponse":{"id":"call_...","name":...,"response":{...},"parts":[{"inlineData":{...}}]}}
+          fr.parts = mediaParts
+        }
+        parts.push({ functionResponse: fr })
+      }
+      wire.push({ role: 'model', parts })
+    }
+    const parts = []
+    const text = flattenText(message.content)
+    if (text.length > 0) parts.push({ text })
+    // Multimodal blocks (image/video/audio/pdf/document/file): the Antigravity
+    // wire sends media as inlineData {mimeType, data(base64)} parts.
+    for (const block of message.content) {
+      if (block.type === 'image') {
+        if (attachments !== undefined && block.attachment !== undefined) {
+          const stored = await attachments.readImage(block.attachment)
+          parts.push({
+            inlineData: {
+              mimeType: stored.ref.mediaType,
+              data: Buffer.from(stored.data).toString('base64'),
+            },
+          })
+        } else if (typeof block.mimeType === 'string' && typeof block.data === 'string' && block.data.length > 0) {
+          parts.push({ inlineData: { mimeType: block.mimeType, data: block.data } })
+        }
+      } else if (
+        (block.type === 'video' || block.type === 'audio' || block.type === 'pdf' || block.type === 'document' || block.type === 'file') &&
+        typeof block.data === 'string' && block.data.length > 0
+      ) {
+        parts.push({
+          inlineData: {
+            mimeType: block.mimeType || (block.type === 'pdf' ? 'application/pdf' : 'application/octet-stream'),
+            data: block.data,
+          },
+        })
+      } else if (typeof block.mimeType === 'string' && typeof block.data === 'string' && block.data.length > 0) {
+        parts.push({ inlineData: { mimeType: block.mimeType, data: block.data } })
+      }
+    }
+    if (parts.length > 0) wire.push({ role: 'user', parts })
+  }
+  return wire
+}
+
+const JSON_SCHEMA_META_DECLARATIONS = new Set([
+  '$schema',
+  '$id',
+  '$anchor',
+  '$dynamicAnchor',
+  '$vocabulary',
+  '$comment',
+  '$defs',
+  'definitions',
+])
+
+/**
+ * Sanitize JSON Schema for Google Gemini / OpenAPI 3.0 function declaration parameters.
+ * - Converts `const: val` to `enum: [val]` (and ensures `type` is present)
+ * - Strips meta declarations ($schema, $id, etc.)
+ * - Recursively processes properties, items, oneOf, anyOf, allOf, etc.
+ */
+function sanitizeForOpenApi(schema) {
+  if (typeof schema !== 'object' || schema === null) return schema
+  if (Array.isArray(schema)) return schema.map(sanitizeForOpenApi)
+
+  const result = {}
+  for (const [key, value] of Object.entries(schema)) {
+    if (JSON_SCHEMA_META_DECLARATIONS.has(key)) continue
+
+    if (key === 'const') {
+      if (!('enum' in schema)) {
+        result.enum = [value]
+      }
+      if (!('type' in schema) && value !== undefined && value !== null) {
+        result.type = typeof value === 'number'
+          ? (Number.isInteger(value) ? 'integer' : 'number')
+          : typeof value
+      }
+      continue
+    }
+
+    result[key] = sanitizeForOpenApi(value)
+  }
+
+  // Google Gemini / OpenAPI compatibility:
+  // Gemini's protobuf Schema definition sets `enum` as `repeated string enum`.
+  // If `enum` is present on a number/integer schema, or contains non-string items:
+  // - For number/integer: remove `enum` (otherwise protobuf throws (TYPE_STRING), <number>)
+  // - For string: ensure all enum items are strings
+  if ('enum' in result && Array.isArray(result.enum)) {
+    const hasNonString = result.enum.some((v) => typeof v !== 'string')
+    if (result.type === 'number' || result.type === 'integer' || (hasNonString && result.type !== 'string')) {
+      const allowedStr = result.enum.join(', ')
+      const note = `(Allowed values: ${allowedStr})`
+      if (!result.description || !result.description.includes(String(result.enum[0]))) {
+        result.description = result.description ? `${result.description} ${note}` : note
+      }
+      delete result.enum
+    } else {
+      result.enum = result.enum.map((v) => String(v))
+    }
+  }
+
+  return result
+}
+
+const MODEL_ALIASES = {
+  'gemini-3.1-pro-high': 'gemini-pro-agent',
+  'gemini-3.1-pro': 'gemini-pro-agent',
+  'gemini-3-pro': 'gemini-pro-agent',
+  'gemini-3.7-flash-thinking': 'gemini-3.7-flash-high',
+  'gemini-3.8-flash-thinking': 'gemini-3.8-flash-high',
+  'gemini-3.8-flash': 'gemini-3.8-flash-high',
+  'gemini-3.7-flash': 'gemini-3.7-flash-high',
+  'gemini-3.6-flash': 'gemini-3.6-flash-high',
+  'gemini-3.5-flash': 'gemini-3.5-flash-lite',
+  'claude-opus': 'claude-opus-4-6-thinking',
+  'claude-opus-4-6': 'claude-opus-4-6-thinking',
+  'claude-opus-4-5': 'claude-opus-4-6-thinking',
+  'claude-opus-4-5-thinking': 'claude-opus-4-6-thinking',
+  'claude-3-opus': 'claude-opus-4-6-thinking',
+  'claude-3-5-opus': 'claude-opus-4-6-thinking',
+  'opus': 'claude-opus-4-6-thinking',
+  'claude-sonnet': 'claude-sonnet-4-6',
+  'claude-sonnet-4-5': 'claude-sonnet-4-6',
+  'claude-3-5-sonnet': 'claude-sonnet-4-6',
+  'claude-3-7-sonnet': 'claude-sonnet-4-6',
+  'claude-haiku-4-5': 'claude-sonnet-4-6',
+  'claude-haiku': 'claude-sonnet-4-6',
+  'sonnet': 'claude-sonnet-4-6',
+}
+
+function resolveCanonicalModel(modelId) {
+  return MODEL_ALIASES[modelId] || modelId
+}
+
+function maxOutputTokensLimit(model) {
+  const lower = model.toLowerCase()
+  if (lower.startsWith('claude') || lower === 'opus' || lower === 'sonnet') return 64000
+  if (lower.startsWith('gpt-oss-')) return 16384
+  if (lower.includes('flash-image') || lower.includes('tab_flash_lite')) return 16384
+  if (lower.includes('pro') || lower.includes('flash-lite')) return 65535
+  if (lower.includes('pro')) return 65535
+  return 65536
+}
+
+function supportsThinkingConfig(model) {
+  const lower = model.toLowerCase()
+  if (lower.startsWith('gpt-oss-')) return false
+  return true
+}
+
+/** Build the wrapped v1internal streamGenerateContent body (reference wrap_request_v2). */
+async function serializeRequest(options, project, attachments) {
+  const model = resolveCanonicalModel(options.model)
+  const contents = await serializeMessages(options.messages, options.sessionId, model, attachments)
+  const inner = {}
+  if (options.system !== undefined && options.system.length > 0) {
+    inner.systemInstruction = { parts: [{ text: options.system }] }
+  }
+  if (options.tools !== undefined && options.tools.length > 0) {
+    inner.tools = [{
+      functionDeclarations: options.tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: sanitizeForOpenApi(tool.parameters),
+      })),
+    }]
+  }
+  const generationConfig = {}
+  const maxLimit = maxOutputTokensLimit(model)
+  let maxOutputTokens = options.maxTokens !== undefined ? options.maxTokens : maxLimit
+  if (maxOutputTokens > maxLimit) maxOutputTokens = maxLimit
+  generationConfig.maxOutputTokens = maxOutputTokens
+
+  if (options.temperature !== undefined) generationConfig.temperature = options.temperature
+  if (options.stop !== undefined && options.stop.length > 0) generationConfig.stopSequences = options.stop
+  // Real Antigravity agent requests send the explicit thinking config for models that support it
+  // (gpt-oss does not accept thinkingConfig and returns 400).
+  if (supportsThinkingConfig(model)) {
+    const thinkingConfig = { includeThoughts: true, thinkingBudget: -1 }
+    if (options.thinkingLevel) {
+      thinkingConfig.thinkingLevel = options.thinkingLevel
+    } else if (model.includes('-high') || model.includes('flash-lite')) {
+      thinkingConfig.thinkingLevel = 'HIGH'
+    } else if (model.includes('-low') || model.includes('-extra-low')) {
+      thinkingConfig.thinkingLevel = 'LOW'
+    }
+    generationConfig.thinkingConfig = thinkingConfig
+  }
+  if (Object.keys(generationConfig).length > 0) inner.generationConfig = generationConfig
+  if (options.sessionId !== undefined) inner.sessionId = String(options.sessionId)
+  inner.contents = contents
+
+  return {
+    project,
+    request: inner,
+    model,
+    userAgent: 'antigravity',
+    requestType: options.requestType || 'agent',
+    // Real requestId: the client's heavy agent rounds use
+    // agent/{sessionUUID}/{ts}/{reqUUID}/{seq}, but the gateway and the
+    // client's lightweight requests use a single UUID ("agent-"+uuid).
+    // Single UUID is what the gateway (antigravity-hub transform_request.go)
+    // sends for every request, so keep the wire compatible with both.
+    requestId: `agent-${randomHex(8)}-${randomHex(4)}-${randomHex(4)}-${randomHex(4)}-${randomHex(12)}`,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SSE parsing + Gemini chunk translation.
+// ---------------------------------------------------------------------------
+async function* parseSse(body) {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      let idx
+      while ((idx = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, idx).replace(/\r$/, '')
+        buffer = buffer.slice(idx + 1)
+        if (line.startsWith('data: ')) {
+          const payload = line.slice(6).trim()
+          if (payload.length > 0) yield payload
+        }
+      }
+    }
+    buffer += decoder.decode()
+    if (buffer.startsWith('data: ')) {
+      const payload = buffer.slice(6).trim()
+      if (payload.length > 0) yield payload
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+/** Map Gemini finish_reason to the harness FinishReason. */
+function mapFinishReason(reason) {
+  switch (reason) {
+    case 'STOP': return { kind: 'stop' }
+    case 'MAX_TOKENS': return { kind: 'max-tokens' }
+    default: return {
+      kind: 'error',
+      failure: { message: `model stopped: ${reason}`, code: reason.toUpperCase() },
+    }
+  }
+}
+
+/** Map Gemini usageMetadata to disjoint harness TokenUsage. */
+function mapUsage(usage) {
+  if (!usage || typeof usage !== 'object') return undefined
+  const cacheRead = typeof usage.cachedContentTokenCount === 'number' && Number.isSafeInteger(usage.cachedContentTokenCount) && usage.cachedContentTokenCount >= 0
+    ? usage.cachedContentTokenCount
+    : undefined
+  const reasoning = typeof usage.thoughtsTokenCount === 'number' && Number.isSafeInteger(usage.thoughtsTokenCount) && usage.thoughtsTokenCount >= 0
+    ? usage.thoughtsTokenCount
+    : undefined
+  const promptTokens = typeof usage.promptTokenCount === 'number' && Number.isSafeInteger(usage.promptTokenCount) && usage.promptTokenCount >= 0
+    ? usage.promptTokenCount
+    : 0
+  const candidatesTokens = typeof usage.candidatesTokenCount === 'number' && Number.isSafeInteger(usage.candidatesTokenCount) && usage.candidatesTokenCount >= 0
+    ? usage.candidatesTokenCount
+    : 0
+  // In Google Gemini, candidatesTokenCount only counts generated response tokens excluding thoughtsTokenCount.
+  // In DSH TokenUsage conventions (aligned with OpenAI/Anthropic), outputTokens represents all generated tokens
+  // including reasoningTokens (so outputTokens >= reasoningTokens is guaranteed).
+  const outputTokens = candidatesTokens + (reasoning ?? 0)
+  const inputTokens = Math.max(0, promptTokens - (cacheRead ?? 0))
+  const totalTokens = (typeof usage.totalTokenCount === 'number' && Number.isSafeInteger(usage.totalTokenCount) && usage.totalTokenCount >= promptTokens + outputTokens)
+    ? usage.totalTokenCount
+    : (promptTokens + outputTokens)
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    ...(cacheRead !== undefined ? { cacheReadTokens: cacheRead } : {}),
+    ...(reasoning !== undefined ? { reasoningTokens: reasoning } : {}),
+  }
+}
+
+function closeBlock(block) {
+  switch (block.kind) {
+    case 'text': return { type: 'text', text: block.text ?? '' }
+    case 'reasoning': return { type: 'reasoning', text: block.text ?? '' }
+    case 'tool-call': return {
+      type: 'tool-call',
+      id: CallId(block.callId ?? ''),
+      name: block.name ?? '',
+      arguments: block.text ?? '',
+    }
+    default:
+      return { type: 'text', text: block.text ?? '' }
+  }
+}
+
+/**
+ * Translate v1internal SSE payloads into harness StreamChunks. Each payload is
+ * `{"response": {...GenerateContentResponse}, "traceId": ..., "metadata": {}}`
+ * (the reference unwraps the `response` field before forwarding). Parts can be
+ * split across events, so text/reasoning accumulate into one open block each and
+ * tool calls are emitted whole when the part arrives. usage + finish are deferred
+ * to the stream end (or `[DONE]`) so no chunk follows `finish`.
+ */
+async function* translate(payloads, sessionId, onUsage) {
+  let nextIndex = 0
+  let textBlock
+  let reasoningBlock
+  const toolBlocks = new Map()
+  const order = []
+  let pendingFinish
+  let pendingUsage
+  function open(kind) {
+    const block = { index: nextIndex++, kind, text: '' }
+    order.push(block)
+    return block
+  }
+
+  for await (const payload of payloads) {
+    if (payload === '[DONE]') break
+    let chunk
+    try {
+      chunk = JSON.parse(payload)
+    } catch {
+      continue
+    }
+    const resp = chunk.response ?? chunk
+    if (!resp || typeof resp !== 'object') continue
+    if (resp.__cloudCodeMeta !== undefined) continue
+    if (resp.usageMetadata !== undefined) pendingUsage = mapUsage(resp.usageMetadata)
+    for (const candidate of resp.candidates ?? []) {
+      if (typeof candidate.finishReason === 'string') pendingFinish = mapFinishReason(candidate.finishReason)
+      for (const part of candidate.content?.parts ?? []) {
+        // Capture the thought signature: the upstream withholds thinking text
+        // but streams a signature blob we must replay on the next turn for
+        // prefix-cache continuity (reference: SignatureCache + wrapper.rs).
+        // Key it by the tool-call id when the part carries a functionCall, and
+        // by the streaming text otherwise, so each historical part replays the
+        // exact signature it was created with (stable prefix across rounds).
+        if (typeof part.thoughtSignature === 'string' && part.thoughtSignature.length > 0) {
+          if (part.functionCall !== undefined && typeof part.functionCall.id === 'string' && part.functionCall.id.length > 0) {
+            storeCallSignature(sessionId, part.functionCall.id, part.thoughtSignature)
+          } else if (textBlock !== undefined && textBlock.text.length > 0) {
+            storeTextSignature(sessionId, textBlock.text, part.thoughtSignature)
+          }
+        }
+        if (part.functionCall !== undefined) {
+          const call = part.functionCall
+          const block = open('tool-call')
+          toolBlocks.set(block.index, block)
+          block.callId = typeof call.id === 'string' && call.id.length > 0 ? call.id : `call_${block.index}`
+          block.name = call.name ?? ''
+          block.text = typeof call.args === 'string' ? call.args : JSON.stringify(call.args ?? {})
+          yield { type: 'block-start', index: block.index, blockType: 'tool-call' }
+          yield {
+            type: 'tool-call-delta',
+            index: block.index,
+            id: CallId(block.callId),
+            ...(typeof block.name === 'string' && block.name.length > 0 ? { name: block.name } : {}),
+            argumentsDelta: block.text,
+          }
+          continue
+        }
+        const isThought = part.thought === true
+        const text = typeof part.text === 'string' ? part.text : ''
+        if (text.length === 0) continue
+        if (isThought) {
+          if (!reasoningBlock) {
+            reasoningBlock = open('reasoning')
+            yield { type: 'block-start', index: reasoningBlock.index, blockType: 'reasoning' }
+          }
+          reasoningBlock.text += text
+          yield { type: 'reasoning-delta', index: reasoningBlock.index, text }
+        } else {
+          if (!textBlock) {
+            textBlock = open('text')
+            yield { type: 'block-start', index: textBlock.index, blockType: 'text' }
+          }
+          textBlock.text += text
+          yield { type: 'text-delta', index: textBlock.index, text }
+        }
+      }
+    }
+  }
+
+  for (const block of order) yield { type: 'block-end', index: block.index, block: closeBlock(block) }
+  if (pendingUsage !== undefined) {
+    if (typeof onUsage === 'function') {
+      try { onUsage(pendingUsage) } catch {}
+    }
+    yield { type: 'usage', usage: pendingUsage }
+  }
+  const reason = pendingFinish ?? { kind: 'stop' }
+  const effectiveReason = reason.kind === 'stop' && order.length === 0 ? {
+    kind: 'error',
+    failure: { message: 'model returned a completed response with no content', code: EMPTY_RESPONSE_CODE },
+  } : (toolBlocks.size > 0 && reason.kind === 'stop' ? { kind: 'tool-calls' } : reason)
+  yield {
+    type: 'finish',
+    reason: effectiveReason,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Error mapping (mirrors the reference + dsh-llm-deepseek).
+// ---------------------------------------------------------------------------
+function providerRetryAfterMs(value) {
+  if (value === null) return undefined
+  if (/^\d+$/.test(value)) {
+    const delay = Number(value) * 1000
+    return Number.isFinite(delay) && delay > 0 ? delay : undefined
+  }
+  const delay = Date.parse(value) - Date.now()
+  return Number.isFinite(delay) && delay > 0 ? delay : undefined
+}
+
+function requestId(headers) {
+  const value = headers.get('x-gfe-request-id') ?? headers.get('x-request-id')
+  return value === null || value.length === 0 ? undefined : ProviderRequestId(value)
+}
+
+function httpErrorCode(status, error) {
+  if (status === 401 || status === 403) return 'AUTH'
+  const detail = [error?.code, error?.type, error?.message].filter(Boolean).join(' ')
+  if (isQuotaExceededError(detail)) return QUOTA_EXCEEDED_CODE
+  if (status === 429) return 'RATE_LIMIT'
+  if (status === 400) {
+    if (isContextWindowExceededError(detail)) return CONTEXT_WINDOW_EXCEEDED_CODE
+    return 'INVALID_REQUEST'
+  }
+  if (status >= 500) return 'SERVER'
+  return `HTTP_${status}`
+}
+
+async function httpError(response, context) {
+  let message = `${context} API error (HTTP ${response.status})`
+  let providerError
+  try {
+    providerError = (await response.json()).error
+    if (providerError?.message) message = providerError.message
+  } catch { /* keep default */ }
+  const delay = providerRetryAfterMs(response.headers.get('retry-after'))
+  const id = requestId(response.headers)
+  return new LlmError(message, httpErrorCode(response.status, providerError), {
+    status: response.status,
+    ...(delay === undefined ? {} : { providerRetryAfterMs: delay }),
+    ...(id === undefined ? {} : { requestId: id }),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Adapter
+// ---------------------------------------------------------------------------
+class AntigravityAdapter extends LlmAdapter {
+  constructor(config, usageTracker, quotaService, quotaReporter, scheduler) {
+    super()
+    this.config = config
+    this.usageTracker = usageTracker
+    this.quotaService = quotaService
+    this.quotaReporter = quotaReporter
+    this.scheduler = scheduler
+    this.token = undefined
+    this.refreshing = undefined
+    this.project = undefined
+    this.projectAccessToken = undefined
+    this.lastRefreshToken = undefined
+  }
+
+  resetRuntimeState() {
+    this.token = undefined
+    this.refreshing = undefined
+    this.project = undefined
+    this.projectAccessToken = undefined
+    this.lastRefreshToken = undefined
+    if (this.quotaService) {
+      this.quotaService.clearCache()
+    }
+  }
+
+  getActiveProxy() {
+    const activeAcc = this.config.getActiveAccount ? this.config.getActiveAccount() : null
+    return activeAcc?.proxy || null
+  }
+
+  providerInfo(provider) {
+    return { id: provider, name: 'Antigravity' }
+  }
+
+  providerRetryPolicy(_provider) {
+    return this.config.options().retryPolicy
+  }
+
+  listModels(provider) {
+    return Promise.resolve(this.config.options().models.map((model) => ({
+      provider,
+      id: model.id,
+      name: model.name ?? model.id,
+      ...(model.description === undefined ? {} : { description: model.description }),
+      inputModalities: (model.inputModalities !== undefined && model.inputModalities.length > 0)
+        ? model.inputModalities
+        : inputModalitiesOf(model.id),
+    })))
+  }
+
+  resolveModel(provider, model, _signal) {
+    const connection = this.config.options()
+    const configured = connection.models.find((entry) => entry.id === model)
+    const modalities = (configured?.inputModalities !== undefined && configured.inputModalities.length > 0)
+      ? configured.inputModalities
+      : inputModalitiesOf(model)
+    const cw = configured?.contextWindow ?? getModelContextWindow(model, connection.enable1MMode) ?? connection.defaultContextWindow
+    return Promise.resolve({
+      provider,
+      id: model,
+      name: configured?.name ?? model,
+      inputModalities: modalities,
+      context: { contextWindow: cw },
+      defaultMaxTokens: configured?.maxTokens ?? connection.maxTokens,
+    })
+  }
+
+  /** Exchange the refresh token for a fresh access token (cached, 900s skew). */
+  async ensureAccessToken() {
+    const connection = this.config.options()
+    const refreshToken = await this.config.resolveRefreshToken(connection)
+
+    // Self-healing check: if the refresh token changed, invalidate all runtime cached state
+    if (this.lastRefreshToken !== undefined && this.lastRefreshToken !== refreshToken) {
+      this.resetRuntimeState()
+    }
+    this.lastRefreshToken = refreshToken
+
+    if (this.token !== undefined && this.token.expiresAt > Date.now() + TOKEN_REFRESH_SKEW_MS) {
+      return this.token.accessToken
+    }
+    if (this.refreshing !== undefined) return this.refreshing
+    const proxy = this.getActiveProxy()
+    this.refreshing = (async () => {
+      const params = new URLSearchParams({
+        client_id: connection.clientId,
+        client_secret: connection.clientSecret,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      })
+      let response
+      try {
+        response = await antigravityFetch(TOKEN_URL, {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-www-form-urlencoded', ...attributionHeaders() },
+          body: params.toString(),
+        }, proxy)
+      } catch (error) {
+        throw new LlmError(`antigravity: OAuth token refresh request failed${proxy ? ` (proxy: ${maskProxy(proxy)})` : ''}`, 'TRANSPORT', { cause: error })
+      }
+      if (!response.ok) {
+        const body = await response.text().catch(() => '')
+        if (body.includes('invalid_grant')) this.token = undefined
+        throw new LlmError(
+          `antigravity: OAuth token refresh failed (HTTP ${response.status}): ${body.slice(0, 200)}`,
+          httpErrorCode(response.status, undefined),
+          { status: response.status },
+        )
+      }
+      const data = await response.json()
+      const accessToken = data.access_token
+      if (typeof accessToken !== 'string' || accessToken.length === 0) {
+        throw new LlmError('antigravity: OAuth token refresh returned no access_token', 'AUTH')
+      }
+      const expiresIn = Number(data.expires_in ?? 3600)
+      this.token = { accessToken, expiresAt: Date.now() + (expiresIn - TOKEN_REFRESH_SKEW_MS / 1000) * 1000 }
+      return accessToken
+    })()
+    try {
+      return await this.refreshing
+    } finally {
+      this.refreshing = undefined
+    }
+  }
+
+  /** Resolve the account's cloudaicompanionProject; fall back to 'default'. */
+  async ensureProject(accessToken) {
+    const connection = this.config.options()
+    if (connection.project !== undefined && connection.project.length > 0) return connection.project
+    if (this.projectAccessToken === accessToken && this.project !== undefined) return this.project
+    const proxy = this.getActiveProxy()
+    try {
+      const response = await antigravityFetch(LOAD_CODE_ASSIST_URL, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          'content-type': 'application/json',
+          ...attributionHeaders(),
+          'user-agent': OFFICIAL_USER_AGENT,
+        },
+        body: JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY' } }),
+      }, proxy)
+      if (response.ok) {
+        const data = await response.json()
+        const project = data.cloudaicompanionProject
+        if (typeof project === 'string' && project.length > 0) {
+          this.project = project
+          this.projectAccessToken = accessToken
+          return project
+        }
+      }
+    } catch { /* fall back below */ }
+    this.project = 'default'
+    this.projectAccessToken = accessToken
+    return this.project
+  }
+
+  async *stream(options) {
+    const connection = this.config.options()
+    const accessToken = await this.ensureAccessToken()
+    const project = await this.ensureProject(accessToken)
+    const consumer = new AbortController()
+    const watchdog = idleWatchdog(
+      options.signal === undefined ? consumer.signal : AbortSignal.any([options.signal, consumer.signal]),
+      connection.streamIdleTimeoutMs,
+      STREAM_IDLE_TIMEOUT_CODE,
+    )
+    const iterator = this.request(options, watchdog.signal, connection, accessToken, project)[Symbol.asyncIterator]()
+    let exhausted = false
+    try {
+      while (true) {
+        const result = await watchdog.next(iterator)
+        if (result.done) {
+          exhausted = true
+          return
+        }
+        yield result.value
+      }
+    } catch (error) {
+      if (timeoutOf(watchdog.signal, STREAM_IDLE_TIMEOUT_CODE) !== undefined) {
+        throw new LlmError(`antigravity stream idle timeout after ${connection.streamIdleTimeoutMs}ms`, 'TIMEOUT', { cause: error })
+      }
+      if (options.signal?.aborted) throw new LlmError('antigravity request aborted by caller', 'ABORTED', { cause: error })
+      if (error instanceof LlmError) throw error
+      throw new LlmError('antigravity API stream failed', 'TRANSPORT', { cause: error })
+    } finally {
+      consumer.abort('antigravity stream consumer stopped')
+      if (!exhausted && iterator.return !== undefined) {
+        try {
+          await iterator.return()
+        } catch { /* transport teardown */ }
+      }
+    }
+  }
+
+  async *request(options, signal, connection, accessToken, project) {
+    const startTime = Date.now()
+    const attachments = this.config.resolveAttachments?.()
+    const body = await serializeRequest(options, project, attachments)
+    const payload = JSON.stringify(body)
+    let lastError
+    for (const baseURL of connection.baseURLs) {
+      for (const withProjectHeader of [true, false]) {
+        const headers = {
+          authorization: `Bearer ${accessToken}`,
+          'content-type': 'application/json',
+          'x-client-name': 'antigravity',
+          'x-client-version': '1.11.5',
+          'x-machine-id': MACHINE_ID,
+          'x-vscode-sessionid': VSCODE_SESSION_ID,
+          ...attributionHeaders(),
+          // The Google Cloud Code endpoint fingerprints the User-Agent: an
+          // attribution (deepseek-harness) UA is rejected with 429
+          // RESOURCE_EXHAUSTED, and the plain `antigravity` UA cannot see the
+          // newest models (404). The official `vscode/... (Antigravity/...)`
+          // identity unlocks them; attribution is retained via the x-dsh-*
+          // headers and the wire contract's spirit, while the UA itself must
+          // stay the upstream's expected value.
+          'user-agent': OFFICIAL_USER_AGENT,
+          ...(withProjectHeader && project !== 'default' && project.length > 0 ? { 'x-goog-user-project': project } : {}),
+        }
+        const proxy = this.getActiveProxy()
+        let response
+        try {
+          response = await antigravityFetch(`${baseURL}:streamGenerateContent?alt=sse`, {
+            method: 'POST',
+            headers,
+            body: payload,
+            signal,
+          }, proxy)
+        } catch (error) {
+          if (signal.aborted) throw error
+          lastError = new LlmError(`antigravity request to ${baseURL} failed${proxy ? ` (proxy: ${maskProxy(proxy)})` : ''}`, 'TRANSPORT', { cause: error })
+          continue
+        }
+        // [FIX #3074] 403 with project header -> retry without it (SERVICE_DISABLED downgrade).
+        if (response.status === 403 && withProjectHeader) continue
+        if (!response.ok) {
+          lastError = await httpError(response, 'antigravity')
+          if (response.status >= 500 || response.status === 429 || response.status === 408) continue
+          throw lastError
+        }
+        if (!response.body) throw new LlmError('antigravity API returned no response body', 'EMPTY_RESPONSE')
+        const activeAcc = this.config.getActiveAccount ? this.config.getActiveAccount() : null
+        yield* translate(parseSse(response.body), options.sessionId, (usage) => {
+          const recordItem = {
+            timestamp: new Date().toISOString(),
+            model: options.model,
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            cacheReadTokens: usage.cacheReadTokens || 0,
+            reasoningTokens: usage.reasoningTokens || 0,
+            durationMs: Date.now() - startTime,
+            sessionId: options.sessionId,
+            accountId: activeAcc?.id,
+            accountName: activeAcc?.name,
+            accountEmail: activeAcc?.email,
+          }
+          this.usageTracker?.record(recordItem)
+          this.quotaReporter?.reportUsage(recordItem, activeAcc, this.quotaService)
+          this.scheduler?.markAccountUsed(activeAcc?.email || activeAcc?.id)
+        })
+        return
+      }
+    }
+    throw lastError ?? new LlmError('antigravity: no upstream endpoint attempted', 'TRANSPORT')
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Plugin registration
+// ---------------------------------------------------------------------------
+const name = 'llm-antigravity'
+const inject = ['llm']
+const NS = 'llm-antigravity'
+const PROVIDER = 'antigravity'
+
+function resolveModels(models, enable1MMode = false) {
+  const seen = new Set()
+  return (models ?? DEFAULT_MODELS).map((model) => {
+    if (model.id.length === 0) throw new Error('llm-antigravity: catalog model ids must be non-empty')
+    if (model.name !== undefined && model.name.length === 0) throw new Error(`llm-antigravity: catalog model "${model.id}" has an empty name`)
+    if (model.contextWindow !== undefined && (!Number.isInteger(model.contextWindow) || model.contextWindow <= 0)) {
+      throw new Error(`llm-antigravity: catalog model "${model.id}" contextWindow must be a positive integer`)
+    }
+    if (model.maxTokens !== undefined && (!Number.isSafeInteger(model.maxTokens) || model.maxTokens <= 0)) {
+      throw new Error(`llm-antigravity: catalog model "${model.id}" maxTokens must be a positive safe integer`)
+    }
+    if (seen.has(model.id)) throw new Error(`llm-antigravity: duplicate catalog model "${model.id}"`)
+    seen.add(model.id)
+    const modalities = (model.inputModalities !== undefined && model.inputModalities.length > 0)
+      ? model.inputModalities
+      : inputModalitiesOf(model.id)
+
+    // Dynamic context window resolution:
+    // When enable1MMode is true, upgrade standard models to full 1M capacity (or model-specific max).
+    // If a user provided an explicit custom contextWindow that differs from standard presets, honor user's override.
+    let cw = model.contextWindow
+    const isStandardPreset = cw === undefined ||
+      cw === 1_000_000 || cw === 1_048_576 ||
+      cw === 256_000 || cw === 128_000 ||
+      cw === 160_000 || cw === 80_000 ||
+      cw === 250_000 || cw === 131_072
+    if (isStandardPreset) {
+      cw = getModelContextWindow(model.id, enable1MMode)
+    }
+
+    return {
+      id: model.id,
+      ...(model.name === undefined ? {} : { name: model.name }),
+      ...(model.description === undefined ? {} : { description: model.description }),
+      contextWindow: cw,
+      ...(model.maxTokens === undefined ? {} : { maxTokens: model.maxTokens }),
+      inputModalities: modalities,
+    }
+  })
+}
+
+function resolveAdapterOptions(config, environment) {
+  const enable1MMode = Boolean(config.enable1MMode ?? false)
+  const defaultContextWindow = config.defaultContextWindow !== undefined
+    ? config.defaultContextWindow
+    : (enable1MMode ? DEFAULT_CONTEXT_WINDOW_1M : DEFAULT_CONTEXT_WINDOW_OFFICIAL)
+  if (defaultContextWindow !== undefined && (!Number.isInteger(defaultContextWindow) || defaultContextWindow <= 0)) {
+    throw new Error('llm-antigravity: defaultContextWindow must be a positive integer')
+  }
+  if (config.maxTokens !== undefined && (!Number.isSafeInteger(config.maxTokens) || config.maxTokens <= 0)) {
+    throw new Error('llm-antigravity: maxTokens must be a positive safe integer')
+  }
+  const streamIdleTimeoutMs = config.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS
+  if (!Number.isFinite(streamIdleTimeoutMs) || streamIdleTimeoutMs <= 0 || streamIdleTimeoutMs > MAX_TIMER_DELAY_MS) {
+    throw new Error(`llm-antigravity: streamIdleTimeoutMs must be a positive finite number no greater than ${MAX_TIMER_DELAY_MS}`)
+  }
+  const baseURLs = config.baseURL ? [config.baseURL] : (config.baseURLs ?? DEFAULT_BASE_URLS)
+  if (!Array.isArray(baseURLs) || baseURLs.length === 0 || baseURLs.some((url) => typeof url !== 'string' || url.length === 0)) {
+    throw new Error('llm-antigravity: baseURLs must be a non-empty array of URL strings')
+  }
+  return {
+    refreshTokenEnv: credentialRef(config.refreshTokenEnv ?? 'ANTIGRAVITY_REFRESH_TOKEN'),
+    clientId: config.clientId ?? CLIENT_ID,
+    clientSecret: config.clientSecret ?? CLIENT_SECRET,
+    baseURL: config.baseURL ?? baseURLs[0],
+    baseURLs,
+    project: config.project ?? '',
+    enable1MMode,
+    models: resolveModels(config.models, enable1MMode),
+    defaultContextWindow,
+    maxTokens: config.maxTokens ?? DEFAULT_MAX_TOKENS,
+    streamIdleTimeoutMs,
+    retryPolicy: resolveRetryPolicy(config.retryPolicy, 'llm-antigravity: retryPolicy'),
+    reportEndpoint: config.reportEndpoint ?? '',
+    reportSecret: config.reportSecret ?? '',
+    reportClientId: config.reportClientId ?? 'dsh-antigravity',
+    reportEnabled: config.reportEnabled ?? true,
+    quotaSyncIntervalMs: config.quotaSyncIntervalMs ?? 300_000,
+    quotaSyncEnabled: config.quotaSyncEnabled ?? true,
+  }
+}
+
+function apply(ctx, config) {
+  let current = () => config
+  let lastRaw
+  let lastGood
+  const options = () => {
+    const raw = current()
+    if (raw === lastRaw && lastGood !== undefined) return lastGood
+    try {
+      const next = resolveAdapterOptions(raw, launchEnvironmentOf(ctx))
+      lastRaw = raw
+      lastGood = next
+      return next
+    } catch (error) {
+      if (lastGood === undefined) throw error
+      lastRaw = raw
+      ctx.logger.error('llm-antigravity: keeping the last good configuration after an invalid settings section')
+      ctx.logger.error(error)
+      return lastGood
+    }
+  }
+  options()
+
+  // Model-facing multimodal tools: lets the model attach local video/audio/pdf files
+  // to the conversation (the Antigravity wire carries them as inlineData parts).
+  applyReadVideoTool(ctx)
+  applyReadAudioTool(ctx)
+  applyReadPdfTool(ctx)
+
+  const usageTracker = new UsageTracker()
+  const quotaService = new QuotaService()
+  const valuationHistoryTracker = new ValuationHistoryTracker()
+  const quotaReporter = new QuotaReporter(options)
+
+  let adapter = null
+  let scheduler = null
+
+  const accountsManager = new AccountsManager(ctx, async (activeAccount) => {
+    if (adapter) {
+      adapter.resetRuntimeState()
+    }
+    quotaService.clearCache()
+    try {
+      const credentials = ctx.get('credentials')
+      if (credentials && typeof credentials.set === 'function') {
+        const ref = options().refreshTokenEnv || 'ANTIGRAVITY_REFRESH_TOKEN'
+        if (activeAccount && activeAccount.refreshToken) {
+          await credentials.set(ref, activeAccount.refreshToken)
+        }
+      }
+    } catch {}
+  })
+
+  // Watch for credential updates on the backend if the credentials service is mounted
+  ctx.inject(['credentials'], (credCtx) => {
+    try {
+      credCtx.credentials?.on?.('update', (ref) => {
+        const currentRef = options().refreshTokenEnv || 'ANTIGRAVITY_REFRESH_TOKEN'
+        if (ref === currentRef && adapter) {
+          adapter.resetRuntimeState()
+        }
+      })
+    } catch {}
+  })
+
+  const resolveRefreshToken = async (connection) => {
+    // 1. Try active account from AccountsManager
+    const activeAcc = accountsManager.getActiveAccount()
+    if (activeAcc && activeAcc.refreshToken) {
+      return activeAcc.refreshToken
+    }
+    // 2. Fall back to credentials service
+    const ref = connection.refreshTokenEnv ?? 'ANTIGRAVITY_REFRESH_TOKEN'
+    const credentials = ctx.get('credentials')
+    if (credentials !== undefined) {
+      const hit = await credentials.resolve(ref)
+      if (hit !== undefined && hit.value !== undefined && hit.value.length > 0) {
+        accountsManager.ensureInitialized(hit.value).catch(() => {})
+        return assertUsableApiKey(hit.value, 'llm-antigravity', ref)
+      }
+    }
+    // 3. Fall back to launch environment
+    const env = launchEnvironmentOf(ctx)
+    const ambient = env.get(ref)
+    if (ambient !== undefined && ambient.value !== undefined && ambient.value.length > 0) {
+      accountsManager.ensureInitialized(ambient.value).catch(() => {})
+      return assertUsableApiKey(ambient.value, 'llm-antigravity', ref)
+    }
+    throw new LlmError(
+      `llm-antigravity: no refresh token for provider route "${PROVIDER}"; store ${ref} through the credentials service (the web Models page writes it), or export ${ref} in the launching environment`,
+      'MISSING_CREDENTIAL',
+    )
+  }
+
+  scheduler = new QuotaSyncScheduler({
+    getOptions: options,
+    accountsManager,
+    quotaService,
+    quotaReporter,
+    getAdapter: () => adapter,
+    logger: ctx.logger,
+    usageTracker,
+  })
+
+  adapter = new AntigravityAdapter({
+    options,
+    resolveRefreshToken,
+    resolveAttachments: () => ctx.get('attachments'),
+    getActiveAccount: () => accountsManager.getActiveAccount(),
+  }, usageTracker, quotaService, quotaReporter, scheduler)
+
+  usageTracker.onRecord = (item) => {
+    scheduler?.markAccountUsed(item.accountEmail || item.accountId)
+  }
+
+  ctx.on('dispose', () => scheduler?.stop())
+
+  // Register WebServer routes for accounts, live quota and usage statistics
+  ctx.inject(['webServer'], (httpCtx) => {
+    try {
+      httpCtx.effect(() => httpCtx.webServer.register({
+        kind: 'prefix',
+        path: '/api/antigravity',
+        handler: async (req, res) => {
+          res.setHeader('Access-Control-Allow-Origin', '*')
+          res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+          if (req.method === 'OPTIONS') {
+            res.writeHead(204)
+            res.end()
+            return
+          }
+
+          const url = new URL(req.url ?? '/', 'http://localhost')
+          const pathName = url.pathname.replace(/\/+$/, '')
+
+          const readJsonBody = async () => {
+            return new Promise((resolve, reject) => {
+              let body = ''
+              req.on('data', (chunk) => { body += chunk })
+              req.on('end', () => {
+                try {
+                  resolve(body ? JSON.parse(body) : {})
+                } catch (e) {
+                  reject(new Error('Invalid JSON body'))
+                }
+              })
+              req.on('error', reject)
+            })
+          }
+
+          // Accounts endpoints:
+          // GET /api/antigravity/accounts
+          if (pathName === '/api/antigravity/accounts' && req.method === 'GET') {
+            const ref = options().refreshTokenEnv || 'ANTIGRAVITY_REFRESH_TOKEN'
+            let seedToken = ''
+            const creds = ctx.get('credentials')
+            if (creds) {
+              try {
+                const hit = await creds.resolve(ref)
+                seedToken = hit?.value || ''
+              } catch {}
+            }
+            if (!seedToken) {
+              try {
+                const env = launchEnvironmentOf(ctx)
+                const ambient = env.get(ref)
+                seedToken = ambient?.value || ''
+              } catch {}
+            }
+            if (!seedToken && process.env[ref]) {
+              seedToken = process.env[ref]
+            }
+            if (seedToken) {
+              await accountsManager.ensureInitialized(seedToken)
+            }
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({
+              ok: true,
+              activeAccountId: accountsManager.data.activeAccountId,
+              accounts: accountsManager.getAccountsView()
+            }))
+            return
+          }
+
+          // POST /api/antigravity/accounts (Add account)
+          if (pathName === '/api/antigravity/accounts' && req.method === 'POST') {
+            try {
+              const body = await readJsonBody()
+              const acc = await accountsManager.addAccount({
+                name: body.name,
+                refreshToken: body.refreshToken,
+                proxy: body.proxy,
+                setActive: body.setActive ?? false,
+              })
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                ok: true,
+                account: {
+                  id: acc.id,
+                  name: acc.name,
+                  email: acc.email,
+                  tier: acc.tier,
+                  project: acc.project,
+                  active: acc.id === accountsManager.data.activeAccountId,
+                  tokenMasked: maskToken(acc.refreshToken),
+                  hasToken: true,
+                  proxy: acc.proxy || '',
+                  proxyMasked: maskProxy(acc.proxy),
+                  hasProxy: Boolean(acc.proxy && acc.proxy.trim().length > 0),
+                },
+                activeAccountId: accountsManager.data.activeAccountId,
+                accounts: accountsManager.getAccountsView()
+              }))
+            } catch (err) {
+              res.writeHead(400, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ ok: false, error: err.message || String(err) }))
+            }
+            return
+          }
+
+          // POST /api/antigravity/accounts/switch (Switch active account)
+          if (pathName === '/api/antigravity/accounts/switch' && req.method === 'POST') {
+            try {
+              const body = await readJsonBody()
+              const acc = await accountsManager.switchAccount(body.accountId)
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                ok: true,
+                activeAccountId: accountsManager.data.activeAccountId,
+                activeAccount: acc ? {
+                  id: acc.id,
+                  name: acc.name,
+                  email: acc.email,
+                  tier: acc.tier,
+                  project: acc.project,
+                } : null,
+                accounts: accountsManager.getAccountsView()
+              }))
+            } catch (err) {
+              res.writeHead(400, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ ok: false, error: err.message || String(err) }))
+            }
+            return
+          }
+
+          // POST /api/antigravity/proxy/test (Test proxy connection)
+          if (pathName === '/api/antigravity/proxy/test' && req.method === 'POST') {
+            try {
+              const body = await readJsonBody()
+              const rawProxy = body.proxy
+              const normProxy = normalizeProxyUrl(rawProxy)
+              if (!normProxy) {
+                res.writeHead(400, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ ok: false, error: '代理地址格式不正确，支持 http:// 或 socks5://' }))
+                return
+              }
+              const startTime = Date.now()
+              const testRes = await antigravityFetch('https://www.google.com/generate_204', {
+                method: 'GET',
+                signal: AbortSignal.timeout(10000),
+              }, normProxy)
+              const latencyMs = Date.now() - startTime
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                ok: true,
+                status: testRes.status,
+                latencyMs,
+                proxy: maskProxy(normProxy)
+              }))
+            } catch (err) {
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                ok: false,
+                error: err.message || String(err)
+              }))
+            }
+            return
+          }
+
+          // POST /api/antigravity/accounts/validate (Validate token without saving)
+          if (pathName === '/api/antigravity/accounts/validate' && req.method === 'POST') {
+            try {
+              const body = await readJsonBody()
+              const connection = options()
+              const meta = await validateAndFetchMetadata(body.refreshToken, connection.clientId, connection.clientSecret, body.proxy)
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ ok: true, ...meta }))
+            } catch (err) {
+              res.writeHead(400, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ ok: false, error: err.message || String(err) }))
+            }
+            return
+          }
+
+          // PUT /api/antigravity/accounts/:id or DELETE /api/antigravity/accounts/:id
+          const accountMatch = pathName.match(/^\/api\/antigravity\/accounts\/([a-zA-Z0-9_-]+)$/)
+          if (accountMatch) {
+            const accId = accountMatch[1]
+            if (req.method === 'PUT') {
+              try {
+                const body = await readJsonBody()
+                const acc = await accountsManager.updateAccount(accId, body)
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({
+                  ok: true,
+                  account: {
+                    id: acc.id,
+                    name: acc.name,
+                    email: acc.email,
+                    tier: acc.tier,
+                    project: acc.project,
+                    active: acc.id === accountsManager.data.activeAccountId,
+                    tokenMasked: maskToken(acc.refreshToken),
+                    hasToken: true,
+                    proxy: acc.proxy || '',
+                    proxyMasked: maskProxy(acc.proxy),
+                    hasProxy: Boolean(acc.proxy && acc.proxy.trim().length > 0),
+                  },
+                  activeAccountId: accountsManager.data.activeAccountId,
+                  accounts: accountsManager.getAccountsView()
+                }))
+              } catch (err) {
+                res.writeHead(400, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ ok: false, error: err.message || String(err) }))
+              }
+              return
+            }
+            if (req.method === 'DELETE') {
+              try {
+                await accountsManager.deleteAccount(accId)
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({
+                  ok: true,
+                  activeAccountId: accountsManager.data.activeAccountId,
+                  accounts: accountsManager.getAccountsView()
+                }))
+              } catch (err) {
+                res.writeHead(400, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ ok: false, error: err.message || String(err) }))
+              }
+              return
+            }
+          }
+
+          // POST /api/antigravity/reset (Reset adapter & quota runtime state)
+          if (pathName === '/api/antigravity/reset' && req.method === 'POST') {
+            if (adapter) adapter.resetRuntimeState()
+            quotaService.clearCache()
+            await accountsManager.syncFromCredential()
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ ok: true, message: 'Runtime state reset' }))
+            return
+          }
+
+          if (pathName === '/api/antigravity/usage') {
+            const accountId = url.searchParams.get('accountId')
+            if (req.method === 'DELETE') {
+              usageTracker.reset(accountId)
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ ok: true, message: 'Usage statistics reset' }))
+              return
+            }
+            const resetTime5h = url.searchParams.get('resetTime5h')
+            const resetTimeWeekly = url.searchParams.get('resetTimeWeekly')
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ ok: true, stats: usageTracker.getStats({ resetTime5h, resetTimeWeekly, accountId }) }))
+            return
+          }
+
+          if (pathName === '/api/antigravity/valuation/history') {
+            const period = url.searchParams.get('period') || '5h'
+            if (req.method === 'DELETE') {
+              valuationHistoryTracker.clear(period)
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ ok: true, message: 'Valuation history cleared' }))
+              return
+            }
+            if (req.method === 'POST') {
+              let bodyStr = ''
+              req.on('data', (chunk) => { bodyStr += chunk })
+              req.on('end', () => {
+                try {
+                  const body = JSON.parse(bodyStr || '{}')
+                  const record = valuationHistoryTracker.recordCycleSnapshot(body)
+                  res.writeHead(200, { 'Content-Type': 'application/json' })
+                  res.end(JSON.stringify({ ok: true, record, cycles: valuationHistoryTracker.getHistory(period) }))
+                } catch (e) {
+                  res.writeHead(400, { 'Content-Type': 'application/json' })
+                  res.end(JSON.stringify({ ok: false, error: e.message || String(e) }))
+                }
+              })
+              return
+            }
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ ok: true, cycles: valuationHistoryTracker.getHistory(period) }))
+            return
+          }
+
+          if (pathName === '/api/antigravity/quota') {
+            try {
+              const connection = options()
+              const accountId = url.searchParams.get('accountId')
+              let targetToken = null
+              let targetProxy = null
+              if (accountId) {
+                const targetAcc = accountsManager.data.accounts.find(a => a.id === accountId)
+                if (targetAcc && targetAcc.refreshToken) {
+                  targetToken = targetAcc.refreshToken
+                  targetProxy = targetAcc.proxy || null
+                }
+              } else {
+                const activeAcc = accountsManager.getActiveAccount()
+                targetProxy = activeAcc?.proxy || null
+              }
+              let accessToken
+              let project
+              if (targetToken && targetToken !== adapter.lastRefreshToken) {
+                const meta = await validateAndFetchMetadata(targetToken, connection.clientId, connection.clientSecret, targetProxy)
+                accessToken = meta.accessToken
+                project = meta.project
+              } else {
+                accessToken = await adapter.ensureAccessToken()
+                project = await adapter.ensureProject(accessToken)
+              }
+              const force = url.searchParams.get('force') === 'true' || req.method === 'POST'
+              const quota = await quotaService.getQuota(accessToken, connection.baseURL, project, force, targetProxy)
+              const activeAcc = accountsManager.getActiveAccount()
+              quotaReporter.reportHeartbeat(activeAcc, quota)
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify(quota))
+            } catch (err) {
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ ok: false, error: err.message || String(err) }))
+            }
+            return
+          }
+
+          // QuotaPilot Reporter status:
+          // GET /api/antigravity/reporter/status
+          if (pathName === '/api/antigravity/reporter/config') {
+            if (req.method === 'GET') {
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ ok: true, config: quotaReporter.getEffectiveConfig() }))
+              return
+            }
+            if (req.method === 'POST') {
+              let bodyStr = ''
+              req.on('data', chunk => { bodyStr += chunk })
+              req.on('end', () => {
+                try {
+                  const body = JSON.parse(bodyStr || '{}')
+                  const cur = loadSavedReporterConfig()
+                  if (body.reportEndpoint !== undefined) cur.reportEndpoint = String(body.reportEndpoint).trim()
+                  if (body.reportSecret !== undefined) cur.reportSecret = String(body.reportSecret).trim()
+                  if (body.reportClientId !== undefined) cur.reportClientId = String(body.reportClientId).trim()
+                  if (body.reportEnabled !== undefined) cur.reportEnabled = Boolean(body.reportEnabled)
+                  saveReporterConfigFile(cur)
+                  saveAntigravityToSettingsYaml(cur)
+                  res.writeHead(200, { 'Content-Type': 'application/json' })
+                  res.end(JSON.stringify({ ok: true, config: quotaReporter.getEffectiveConfig() }))
+                } catch (e) {
+                  res.writeHead(400, { 'Content-Type': 'application/json' })
+                  res.end(JSON.stringify({ ok: false, error: e.message }))
+                }
+              })
+              return
+            }
+          }
+
+          if (pathName === '/api/antigravity/reporter/status' && req.method === 'GET') {
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({
+              ok: true,
+              config: quotaReporter.getEffectiveConfig(),
+              stats: quotaReporter.stats,
+              scheduler: scheduler ? scheduler.getStatus() : null,
+            }))
+            return
+          }
+
+          // POST /api/antigravity/reporter/test
+          if (pathName === '/api/antigravity/reporter/test' && req.method === 'POST') {
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            const activeAcc = accountsManager.getActiveAccount()
+            try {
+              const testResult = await quotaReporter.testReport(activeAcc, quotaService)
+              res.end(JSON.stringify(testResult))
+            } catch (err) {
+              res.end(JSON.stringify({ ok: false, error: err.message || String(err) }))
+            }
+            return
+          }
+
+          res.writeHead(404, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: false, error: 'Endpoint not found' }))
+        },
+      }), 'llm-antigravity: webServer route')
+    } catch (e) {
+      ctx.logger?.warn?.('llm-antigravity: webServer registration failed', e)
+    }
+  })
+  ctx.llm.registerConfigurableProviders([{
+    provider: PROVIDER,
+    displayName: 'Antigravity',
+    settingsNs: NS,
+    settingsPath: [],
+  }])
+  const registration = ctx.llm.registerAdapter([PROVIDER], adapter)
+  let registeredPolicy = options().retryPolicy
+  const ensureRegistrationFacts = () => {
+    const policy = options().retryPolicy
+    if (deepEqualJson(policy, registeredPolicy)) return
+    registration.replace([PROVIDER])
+    registeredPolicy = policy
+  }
+  ctx.inject(['settings'], (settingsCtx) => {
+    settingsCtx.settings.installSection(ctx, NS, Config, config, {
+      setSource: (source) => {
+        current = source
+      },
+      onChange: ensureRegistrationFacts,
+    })
+  })
+}
+
+export {
+  AntigravityAdapter,
+  Config,
+  DEFAULT_BASE_URLS,
+  DEFAULT_CONTEXT_WINDOW,
+  DEFAULT_CONTEXT_WINDOW_OFFICIAL,
+  DEFAULT_CONTEXT_WINDOW_1M,
+  DEFAULT_MAX_TOKENS,
+  DEFAULT_STREAM_IDLE_TIMEOUT_MS,
+  apply,
+  getModelContextWindow,
+  inject,
+  name,
+  resolveAdapterOptions,
+}

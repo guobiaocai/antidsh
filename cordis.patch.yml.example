@@ -1,0 +1,23 @@
+# Cordis patch layer for DSH web profile (Antigravity Suite)
+- insert:
+    - id: llm-antigravity
+      name: dsh-llm-antigravity
+      config:
+        refreshTokenEnv: ANTIGRAVITY_REFRESH_TOKEN
+
+    - id: web-search-antigravity
+      name: dsh-web-search-antigravity
+      config:
+        refreshTokenEnv: ANTIGRAVITY_REFRESH_TOKEN
+
+    - id: web-search-selector
+      name: dsh-web-search-selector
+
+    - id: image-gen-antigravity
+      name: dsh-image-gen-antigravity
+      config:
+        refreshTokenEnv: ANTIGRAVITY_REFRESH_TOKEN
+
+- id: web
+  config:
+    searchProvider: antigravity

@@ -1,0 +1,5105 @@
+(function() {
+	const NS = "llm-antigravity";
+	const TOKEN_REF = "ANTIGRAVITY_REFRESH_TOKEN";
+
+	const en = {
+		nav: "Antigravity",
+		tabSearch: "Web Search",
+		searchProviderLabel: "Default Web Search Provider",
+		searchProviderHint: "Select the backend engine used by the web search tool.",
+		optAntigravitySearch: "Google Antigravity Search (Gemini Grounding + Async Title Fetch & Direct Links)",
+		optDeepseekSearch: "DeepSeek Official Search",
+		searchSettingsTitle: "Antigravity Search Advanced Options",
+		searchSettingsDesc: "Configure direct link resolution, page title fetching, and underlying model.",
+		fetchPageTitlesLabel: "Fetch & Replace Web Page Titles",
+		fetchPageTitlesHint: "Concurrently fetch page titles to replace domains with readable titles.",
+		dropUnresolvedLabel: "Drop Unresolved Links",
+		dropUnresolvedHint: "Filter out results when redirection resolution times out or fails.",
+		searchModelLabel: "Search Execution Model",
+		searchModelHint: "Underlying model executing Grounding search (default: gemini-3.7-flash-high).",
+		redirectTimeoutLabel: "Redirect Resolution Timeout (ms)",
+		pageTitleTimeoutLabel: "Page Title Timeout (ms)",
+		maxUsesLabel: "Max Searches Per Request",
+		searchSaveBtn: "Save Search Settings",
+		searchSavedToast: "Search settings saved",
+		imagenTitle: "Gemini 3.1 Flash Image (NanoBanana 2) (dsh-image-gen-antigravity)",
+		imagenDesc: "Integrated Google Gemini 3.1 Flash Image (NanoBanana 2) multimodal text-to-image capabilities, sharing OAuth 2.0 credentials and proxy with Antigravity. Send image generation prompts directly in conversations.",
+		imagenStatusActive: "🟢 Active & Ready",
+		title: "Antigravity (Google Cloud Code)",
+		description: "Google Cloud Code Gemini adapter with OAuth 2.0 refresh_token, live quota, usage statistics & USD valuation estimation.",
+		tabQuota: "Real-time Quota",
+		tabAccounts: "Accounts",
+		tabUsage: "Usage Statistics",
+		tabValuation: "Quota Estimation",
+		tabConfig: "Settings",
+		activeAccount: "Active Account",
+		switchAccount: "Switch",
+		switching: "Switching…",
+		accountSwitched: "Switched active account",
+		addAccount: "Add Account",
+		addingAccount: "Validating & Adding…",
+		accountAdded: "Account added successfully",
+		deleteAccount: "Delete",
+		confirmDeleteAccount: "Are you sure you want to delete this account?",
+		accountDeleted: "Account deleted",
+		editAccount: "Edit",
+		cancelEdit: "Cancel",
+		saveAccountChanges: "Save Changes",
+		savingAccount: "Saving…",
+		accountUpdated: "Account updated successfully",
+		editAccountTitle: "Edit Account & Proxy",
+		proxyLabel: "Dedicated Proxy (HTTP / SOCKS5, Optional)",
+		proxyPlaceholder: "e.g. socks5://127.0.0.1:1080 or http://user:pass@127.0.0.1:7890 (Empty for direct)",
+		proxyHint: "Supports HTTP, HTTPS, and SOCKS5. Supports optional authentication (protocol://user:pass@host:port). Leave empty for direct connection.",
+		proxyDirect: "Direct (No Proxy)",
+		proxyConfigured: "Proxy Configured",
+		testProxyBtn: "Test Connection",
+		testingProxy: "Testing…",
+		proxyTestSuccess: "Proxy connected successfully",
+		proxyTestFailed: "Proxy connection failed",
+		proxyEmptyPrompt: "Please enter a proxy URL to test",
+		accountNameLabel: "Account Name / Tag",
+		accountNamePlaceholder: "e.g. Work, Personal (Leave empty to use email)",
+		accountTokenLabel: "Refresh Token",
+		accountTokenPlaceholder: "Paste OAuth 2.0 Refresh Token here",
+		accountTokenRequired: "Refresh Token is required",
+		accountListTitle: "Configured Accounts",
+		noAccountsYet: "No accounts configured yet. Add your first account below.",
+		currentActiveBadge: "Active",
+		backupBadge: "Standby",
+		quickSwitchLabel: "Account",
+		tokenLabel: "Refresh Token",
+		tokenHint: "Google Cloud Code OAuth 2.0 refresh token. Stored securely in credentials service.",
+		tokenConfigured: "Configured",
+		tokenMissing: "Unconfigured",
+		tokenPlaceholder: "OAuth 2.0 Refresh Token",
+		tokenPlaceholderSet: "Refresh Token configured (leave blank to keep unchanged)",
+		baseUrlLabel: "Base URL",
+		baseUrlHint: "Default: https://daily-cloudcode-pa.googleapis.com/v1internal",
+		enable1MModeLabel: "1M Context Window Mode",
+		enable1MModeHint: "Default OFF (aligned with official checkpointer limits: Flash 256K, Pro 128K, Claude 160K, GPT-OSS 80K). When enabled, unlocks 1M context window (1,048,576 tokens for Gemini, 250K for Claude, 131K for GPT-OSS).",
+		enable1MModeBadgeOff: "Official Aligned (256K / 128K)",
+		enable1MModeBadgeOn: "1M Unlocked (1,048,576)",
+		save: "Save",
+		saving: "Saving…",
+		discard: "Discard",
+		unsaved: "Unsaved",
+		refreshQuota: "Refresh Quota",
+		refreshing: "Refreshing…",
+		lastUpdated: "Updated",
+		quotaTier: "Tier",
+		quotaProject: "Project",
+		limit5h: "5-Hour Limit",
+		limitWeekly: "Weekly Limit",
+		remaining: "Remaining",
+		resetsIn: "Resets in",
+		resetsAt: "Reset time",
+		quotaMissingToken: "No Refresh Token configured. Please configure your token in the Settings tab.",
+		gotoConfig: "Go to Settings",
+		quotaLoading: "Loading quota data…",
+		quotaError: "Failed to load quota",
+		retry: "Retry",
+		modelsQuota: "Model-specific Quotas",
+		usageSummary: "Usage Overview",
+		totalRequests: "Total Calls",
+		totalInput: "Input Tokens",
+		totalOutput: "Output Tokens",
+		totalCacheRead: "Cached Read Tokens",
+		totalReasoning: "Reasoning Tokens",
+		cacheSavings: "Cache Savings",
+		cacheHitRate: "Cache Hit Rate",
+		modelBreakdown: "Model Usage Breakdown",
+		recentRequests: "Recent Calls",
+		noUsageData: "No usage data recorded yet. Make some requests to see stats.",
+		clearUsage: "Clear Stats",
+		confirmClear: "Are you sure you want to clear all usage history?",
+		clearing: "Clearing…",
+		timeCol: "Time",
+		modelCol: "Model",
+		tokensCol: "Tokens",
+		durationCol: "Latency",
+		savingsCol: "Savings",
+
+		// Valuation & Estimation
+		period5h: "5-Hour Window",
+		periodWeekly: "Weekly Window",
+		periodAll: "All Time",
+		groupAll: "All Groups",
+		groupGemini: "Gemini Group",
+		group3p: "Claude / GPT Group",
+		windowNotice5h: "5-Hour backward window based on quota reset time",
+		windowNoticeWeekly: "7-Day (1-Week) backward window based on quota reset time",
+		windowNoticeAll: "Cumulative usage across all recorded history",
+		windowRangeLabel: "Calculation Window",
+		usedCostTitle: "Consumed USD in Window",
+		quotaRemainingPct: "Quota Remaining",
+		quotaConsumedPct: "Quota Consumed",
+		estTotalQuotaTitle: "Est. Total Quota Value",
+		estRemainingQuotaTitle: "Est. Remaining Value",
+		estFormulaHint: "Extrapolated proportionally from USD tokens consumed and Google quota deduction ratio",
+		estRemainingHint: "Equivalent USD value of remaining tokens available in this cycle",
+		estZeroNotice: "Quota is 100% full (0% consumed). Total quota value will be calculated dynamically once requests are made.",
+		estExtNotice: "External quota deduction detected, but local token log is empty in this window. Send a prompt to calibrate.",
+		noUsageInWindow: "No requests recorded within this window.",
+		pricingTableTitle: "Custom Pricing & USD Token Valuation",
+		pricingNote: "Prices are in USD per 1 Million Tokens ($/1M). Thinking/reasoning tokens are billed at the output rate.",
+		inputTokensCol: "Input Tokens",
+		inputPriceCol: "Input ($/1M)",
+		outputTokensCol: "Output (inc. Reasoning)",
+		outputPriceCol: "Output ($/1M)",
+		cacheTokensCol: "Cache Read",
+		cachePriceCol: "Cache ($/1M)",
+		periodCostCol: "Period Cost (USD)",
+		resetPricingBtn: "Reset to Official Defaults",
+		savePricingBtn: "Save Pricing",
+		pricingSavedToast: "Pricing saved",
+		totalPeriodCost: "Total Cost",
+		showAllModelsToggle: "Show all supported models",
+		hideAllModelsToggle: "Show active models only",
+		perModelEstTitle: "Per-Model Quota Breakdown",
+		perModelHeader: "Model",
+		perModelRemHeader: "Remaining %",
+		perModelCostHeader: "Used ($)",
+		perModelTotalHeader: "Est. Total ($)",
+		perModelRemValHeader: "Est. Remaining ($)",
+
+		// Delta Calibration
+		deltaModeBadge: "Delta Calibration",
+		deltaModeHint: "Initial quota was non-full. Extrapolating via marginal quota deduction.",
+		setBaselineBtn: "Set Current as Baseline",
+		baselineSetToast: "Current quota set as calibration baseline",
+
+		// Multi-Account Estimation
+		accountFilterAll: "All Accounts (Aggregated)",
+		accountFilterLabel: "Account",
+		accountCol: "Account",
+		valuationMatrixTitle: "Multi-Account Estimation Matrix",
+		valuationMatrixDesc: "Cross-account estimation comparison based on current window usage and live remaining quota.",
+		refreshAllAccounts: "Refresh All",
+		accountActions: "Action",
+		windowUsedUsd: "Used USD",
+		windowTokens: "Tokens",
+		remainingQuotaPct: "Remaining Quota",
+		estTotalValue: "Est. Total Value",
+		estRemainingValue: "Est. Remaining Value",
+		switchToAccount: "Switch",
+		currentActiveTag: "Active",
+		unassignedAccount: "Legacy / Unassigned",
+
+		// Historical Quota Fluctuation & Line Chart
+		valuationHistoryTitle: "Historical Quota Fluctuation Trend",
+		valuationHistoryDesc: "Tracks the final estimation of each cycle to evaluate quota stability across accounts.",
+		metricEstTotal: "Est. Total Value ($)",
+		metricUsdCost: "Period Consumed ($)",
+		metricRemaining: "Remaining Quota (%)",
+		selectAll: "Select All",
+		deselectAll: "Clear Selection",
+		recordSnapshotBtn: "Record Cycle Snapshot",
+		recordingSnapshot: "Recording…",
+		snapshotRecordedToast: "Current cycle estimation snapshot recorded",
+		clearHistoryBtn: "Clear History",
+		confirmClearHistory: "Are you sure you want to clear historical cycle estimation records?",
+		noHistoryNotice: "No historical cycle records yet. As cycles complete or when you click Snapshot, fluctuation curves will appear here.",
+		fluctuationSummary: "Fluctuation Analysis",
+		fluctuationRange: "Range",
+		fluctuationSpan: "Span",
+		noAccountsSelected: "Please select at least one account to display.",
+
+		// QuotaPilot Reporting Settings
+		quotaPilotSection: "QuotaPilot Telemetry & Quota Radar",
+		quotaPilotDesc: "Asynchronously reports token usage & 5-hour quota snapshots to QuotaPilot for reverse-engineering & forecasting.",
+		quotaPilotEndpointLabel: "QuotaPilot Report Endpoint",
+		quotaPilotEndpointPlaceholder: "e.g. https://your-worker.workers.dev/api/report",
+		quotaPilotEndpointHint: "QuotaPilot report API endpoint. Leave empty to disable reporting.",
+		quotaPilotClientIdLabel: "Client ID",
+		quotaPilotClientIdPlaceholder: "dsh-antigravity",
+		quotaPilotSecretLabel: "Secret Token (Optional)",
+		quotaPilotSecretPlaceholder: "Bearer token or x-api-key",
+		quotaPilotEnabledLabel: "Enable QuotaPilot Telemetry",
+		quotaPilotTestBtn: "Test Connection",
+		quotaPilotTesting: "Testing…",
+		quotaPilotTestSuccess: "QuotaPilot test report succeeded!",
+		quotaPilotTestFailed: "QuotaPilot connection failed: ",
+		openDashboardBtn: "Open Radar Dashboard",
+		quotaRadarBadge: "Quota Radar"
+	};
+
+	const zh = {
+		nav: "Antigravity",
+		tabSearch: "联网搜索",
+		searchProviderLabel: "默认联网搜索服务提供方",
+		searchProviderHint: "选择全局网页搜索工具优先调用的后端引擎。",
+		optAntigravitySearch: "Google Antigravity 搜索 (Gemini Grounding + 异步真实标题抓取与直链解析)",
+		optDeepseekSearch: "DeepSeek 官方搜索 (官方提供的搜索提供方)",
+		searchSettingsTitle: "Antigravity 原生搜索高级参数",
+		searchSettingsDesc: "配置网页直链解析、标题抓取与底层执行模型。",
+		fetchPageTitlesLabel: "抓取并替换网页真实标题",
+		fetchPageTitlesHint: "直链解析后并发抓取目标页面原生 <title> 替换域名，使搜索引用标题更精准可读（推荐开启）。",
+		dropUnresolvedLabel: "过滤无法直连解析的结果",
+		dropUnresolvedHint: "当目标网页重定向超时或解析失败时，自动过滤该搜索结果。",
+		searchModelLabel: "搜索执行底层模型",
+		searchModelHint: "执行 Grounding 搜索与网页摘要的底层模型（默认 gemini-3.7-flash-high）。",
+		redirectTimeoutLabel: "直链解析超时时间 (毫秒)",
+		pageTitleTimeoutLabel: "网页标题抓取超时时间 (毫秒)",
+		maxUsesLabel: "单次请求最大搜索次数",
+		searchSaveBtn: "保存搜索设置",
+		searchSavedToast: "搜索配置已保存",
+		imagenTitle: "Gemini 3.1 Flash Image (NanoBanana 2) 图像生成 (dsh-image-gen-antigravity)",
+		imagenDesc: "已集成 Google Gemini 3.1 Flash Image（社区代号 NanoBanana 2，前身为 2.5 Flash Image / NanoBanana）原生多模态生图能力，与当前 Antigravity 活跃账号共享同一 OAuth 2.0 凭据及代理通道。在对话中输入生图提示词即可直接调用生成图像，支持比例调节与多图垫图编辑。",
+		imagenStatusActive: "🟢 图像生成服务已就绪",
+		title: "Antigravity (Google Cloud Code)",
+		description: "Google Cloud Code Gemini 适配器，支持 OAuth 2.0 认证、实时额度监控、Token 用量统计与 5小时/周额度美元价值预估。",
+		tabQuota: "实时额度",
+		tabAccounts: "账号管理",
+		tabUsage: "用量统计",
+		tabValuation: "额度估算",
+		tabConfig: "基本配置",
+		activeAccount: "当前活跃账号",
+		switchAccount: "切换使用",
+		switching: "切换中…",
+		accountSwitched: "已成功切换至该账号",
+		addAccount: "添加账号",
+		addingAccount: "正在验证并添加…",
+		accountAdded: "账号已成功添加并激活！",
+		deleteAccount: "删除",
+		confirmDeleteAccount: "确定要删除该账号吗？",
+		accountDeleted: "账号已删除",
+		editAccount: "编辑",
+		cancelEdit: "取消",
+		saveAccountChanges: "保存修改",
+		savingAccount: "保存中…",
+		accountUpdated: "账号配置已更新",
+		editAccountTitle: "编辑账号与代理",
+		proxyLabel: "独立代理配置 (HTTP / SOCKS5，可选)",
+		proxyPlaceholder: "例如: socks5://127.0.0.1:1080 或 http://user:pass@127.0.0.1:7890 (留空直连)",
+		proxyHint: "支持 HTTP、HTTPS 与 SOCKS5 代理；支持无密码或带账号密码认证（protocol://user:pass@host:port）。留空则使用本地直连。",
+		proxyDirect: "直连 (无代理)",
+		proxyConfigured: "已配置代理",
+		testProxyBtn: "测试连接",
+		testingProxy: "测试中…",
+		proxyTestSuccess: "代理连接成功",
+		proxyTestFailed: "代理连接失败",
+		proxyEmptyPrompt: "请先输入要测试的代理地址",
+		accountNameLabel: "账号名称 / 备注",
+		accountNamePlaceholder: "例如：个人主号、工作号（留空自动使用邮箱）",
+		accountTokenLabel: "Refresh Token",
+		accountTokenPlaceholder: "在此粘贴 Google Cloud Code OAuth 2.0 Refresh Token",
+		accountTokenRequired: "请输入 Refresh Token",
+		accountListTitle: "已配置账号列表",
+		noAccountsYet: "暂未配置多账号。请在下方添加账号。",
+		currentActiveBadge: "当前生效",
+		backupBadge: "备用",
+		quickSwitchLabel: "当前账号",
+		tokenLabel: "Refresh Token",
+		tokenHint: "Google Cloud Code OAuth 2.0 刷新令牌，安全保存在本地凭据库中。",
+		tokenConfigured: "已配置",
+		tokenMissing: "未配置",
+		tokenPlaceholder: "请输入 OAuth 2.0 Refresh Token",
+		tokenPlaceholderSet: "Refresh Token 已配置（留空保持不变）",
+		baseUrlLabel: "接口地址 (Base URL)",
+		baseUrlHint: "默认: https://daily-cloudcode-pa.googleapis.com/v1internal",
+		enable1MModeLabel: "1M 上下文模式",
+		enable1MModeHint: "默认关闭（严格对齐官方 Checkpointer 实际硬截断策略：Flash 256K、Pro 128K、Claude 160K、GPT-OSS 80K）。开启后放开全部 1M 上下文规格（Gemini 扩展至 1,048,576 tokens，Claude 扩展至 250K，GPT-OSS 扩展至 131K）。",
+		enable1MModeBadgeOff: "官方对齐模式 (256K / 128K)",
+		enable1MModeBadgeOn: "1M 满血模式 (1,048,576)",
+		save: "保存",
+		saving: "保存中…",
+		discard: "放弃修改",
+		unsaved: "未保存",
+		refreshQuota: "刷新额度",
+		refreshing: "刷新中…",
+		lastUpdated: "更新于",
+		quotaTier: "账号权益",
+		quotaProject: "关联项目",
+		limit5h: "5小时限额",
+		limitWeekly: "每周限额",
+		remaining: "剩余",
+		resetsIn: "重置倒计时",
+		resetsAt: "重置时刻",
+		quotaMissingToken: "未检测到 Refresh Token。请先在【基本配置】标签页中填入并保存 Token。",
+		gotoConfig: "前往配置",
+		quotaLoading: "正在查询实时额度…",
+		quotaError: "查询额度失败",
+		retry: "重试",
+		modelsQuota: "具体模型可用额度",
+		usageSummary: "用量总览",
+		totalRequests: "调用总次数",
+		totalInput: "实际输入 Tokens",
+		totalOutput: "实际输出 Tokens",
+		totalCacheRead: "前缀缓存读取",
+		totalReasoning: "思考链消耗",
+		cacheSavings: "缓存节省率",
+		cacheHitRate: "缓存命中率",
+		modelBreakdown: "各模型用量分布",
+		recentRequests: "最近调用记录",
+		noUsageData: "暂无用量记录。发起对话后将在此实时统计 Token 与缓存命中率。",
+		clearUsage: "清空统计",
+		confirmClear: "确定要清空所有历史用量统计吗？",
+		clearing: "清空中…",
+		timeCol: "时间",
+		modelCol: "模型",
+		tokensCol: "Token 消耗",
+		durationCol: "耗时",
+		savingsCol: "缓存节省",
+
+		// Valuation & Estimation
+		period5h: "5小时周期",
+		periodWeekly: "周额度周期",
+		periodAll: "全部历史",
+		groupAll: "全部模型组",
+		groupGemini: "Gemini 额度组",
+		group3p: "Claude / GPT 额度组",
+		windowNotice5h: "按照 5小时 额度重置时间往前倒推 5 小时统计各模型用量",
+		windowNoticeWeekly: "按照 每周 额度重置时间往前倒推 7 天 (1周) 统计各模型用量",
+		windowNoticeAll: "统计本地记录的所有历史调用用量",
+		windowRangeLabel: "统计时间窗口",
+		usedCostTitle: "本周期已消耗价值",
+		quotaRemainingPct: "额度剩余比例",
+		quotaConsumedPct: "已消耗额度比例",
+		estTotalQuotaTitle: "周期总额度预估价值",
+		estRemainingQuotaTitle: "周期剩余可用价值",
+		estFormulaHint: "根据本周期实际消耗美元与 Google 额度扣减比例动态反推",
+		estRemainingHint: "当前剩余百分比对应的等价 Token 美元可用总额度",
+		estZeroNotice: "本周期额度 100% 完整（未发生消耗）。发起请求后将依据消耗比例自动推算总价值额度。",
+		estExtNotice: "检测到额度存在扣减，但本地窗口内尚无调用记录。发起请求后将自动校准估值。",
+		noUsageInWindow: "当前时间窗口内暂无调用记录。",
+		pricingTableTitle: "各模型自定义定价与用量折算",
+		pricingNote: "定价单位为美元/百万 Token ($/1M Tokens)。输出定价含思维链 (Reasoning/Thinking) Token。",
+		inputTokensCol: "实际输入 Token",
+		inputPriceCol: "输入单价 ($/1M)",
+		outputTokensCol: "输出 Token (含思维链)",
+		outputPriceCol: "输出单价 ($/1M)",
+		cacheTokensCol: "缓存读取 Token",
+		cachePriceCol: "缓存单价 ($/1M)",
+		periodCostCol: "本周期折算 ($)",
+		resetPricingBtn: "恢复官方默认定价",
+		savePricingBtn: "保存自定义定价",
+		pricingSavedToast: "定价配置已保存",
+		totalPeriodCost: "总计折算消耗",
+		showAllModelsToggle: "展开所有支持的模型",
+		hideAllModelsToggle: "仅显示有调用的模型",
+		perModelEstTitle: "各模型独立额度与价值测算",
+		perModelHeader: "模型名称",
+		perModelRemHeader: "剩余比例",
+		perModelCostHeader: "已消耗 ($)",
+		perModelTotalHeader: "估算总额度 ($)",
+		perModelRemValHeader: "估算剩余 ($)",
+
+		// Delta Calibration
+		deltaModeBadge: "增量差分校准",
+		deltaModeHint: "接入时初始额度非满额，系统自动依据本地实际产生的额度变化差分精准推算。",
+		setBaselineBtn: "设当前为测算基准",
+		baselineSetToast: "已记录当前剩余比例为新测算基准点",
+
+		// Multi-Account Estimation
+		accountFilterAll: "全部账号汇总",
+		accountFilterLabel: "账号",
+		accountCol: "账号",
+		valuationMatrixTitle: "多账号历史额度估算对比面板",
+		valuationMatrixDesc: "基于各账号在当前时间窗口内的实际消耗与实时剩余配额，综合推算各账号的周期总价值与剩余价值。",
+		refreshAllAccounts: "刷新全部",
+		accountActions: "操作",
+		windowUsedUsd: "窗口消耗金额",
+		windowTokens: "总消耗 Tokens",
+		remainingQuotaPct: "剩余额度",
+		estTotalValue: "预估周期总价值",
+		estRemainingValue: "预估剩余可用价值",
+		switchToAccount: "切换生效",
+		currentActiveTag: "当前生效",
+		unassignedAccount: "历史未标记",
+
+		// Historical Quota Fluctuation & Line Chart
+		valuationHistoryTitle: "历史额度波动回溯趋势",
+		valuationHistoryDesc: "存储并对比每个周期最后一次估算的结果，支持多账号自选放在折线图中观察波动趋势。",
+		metricEstTotal: "预估总价值 ($)",
+		metricUsdCost: "周期消耗 ($)",
+		metricRemaining: "剩余额度 (%)",
+		selectAll: "全选",
+		deselectAll: "清空选择",
+		recordSnapshotBtn: "记录当前周期快照",
+		recordingSnapshot: "记录中…",
+		snapshotRecordedToast: "已成功记录当前周期的估算快照",
+		clearHistoryBtn: "清空历史",
+		confirmClearHistory: "确定要清空所有历史周期的估算记录吗？",
+		noHistoryNotice: "暂无历史周期记录。随着周期推移轮转，或点击上方【记录当前周期快照】，折线图将自动在此绘制。",
+		fluctuationSummary: "波动分析",
+		fluctuationRange: "波动极差",
+		fluctuationSpan: "相对振幅",
+		noAccountsSelected: "请勾选至少一个账号以展示折线图对比。",
+
+		// QuotaPilot Reporting Settings
+		quotaPilotSection: "QuotaPilot 额度雷达与用量上报",
+		quotaPilotDesc: "将请求 Token 消耗及 5 小时配额快照异步上报至 QuotaPilot，实现黑箱计费倒推与额度耗尽预测。",
+		quotaPilotEndpointLabel: "QuotaPilot 上报端点 (Endpoint)",
+		quotaPilotEndpointPlaceholder: "例如: https://your-worker.workers.dev/api/report",
+		quotaPilotEndpointHint: "QuotaPilot 服务端的 report API 地址。留空则完全关闭上报。",
+		quotaPilotClientIdLabel: "客户端标识 (Client ID)",
+		quotaPilotClientIdPlaceholder: "dsh-antigravity",
+		quotaPilotSecretLabel: "鉴权密钥 (Secret Token，可选)",
+		quotaPilotSecretPlaceholder: "Bearer 密钥或 x-api-key",
+		quotaPilotEnabledLabel: "启用 QuotaPilot 异步上报",
+		quotaPilotTestBtn: "测试连通性",
+		quotaPilotTesting: "正在测试…",
+		quotaPilotTestSuccess: "QuotaPilot 连接成功，测试上报已完成！",
+		quotaPilotTestFailed: "QuotaPilot 连接测试失败: ",
+		openDashboardBtn: "打开雷达仪表盘",
+		quotaRadarBadge: "额度雷达"
+	};
+
+	const DEFAULT_MODEL_PRICING = {
+		"gemini-3.7-flash": { input: 0.75, output: 3.75, cache: 0.075 },
+		"gemini-3.7-flash-thinking": { input: 0.75, output: 3.75, cache: 0.075 },
+		"gemini-3.7-flash-high": { input: 0.75, output: 3.75, cache: 0.075 },
+		"gemini-3.7-flash-medium": { input: 0.75, output: 3.75, cache: 0.075 },
+		"gemini-3.7-flash-low": { input: 0.75, output: 3.75, cache: 0.075 },
+		"gemini-3.7-flash-tiered": { input: 0.75, output: 3.75, cache: 0.075 },
+		"gemini-3.8-flash": { input: 0.75, output: 3.75, cache: 0.075 },
+		"gemini-3.8-flash-thinking": { input: 0.75, output: 3.75, cache: 0.075 },
+		"gemini-3.8-flash-high": { input: 0.75, output: 3.75, cache: 0.075 },
+		"gemini-3.8-flash-medium": { input: 0.75, output: 3.75, cache: 0.075 },
+		"gemini-3.8-flash-low": { input: 0.75, output: 3.75, cache: 0.075 },
+		"gemini-3.8-flash-tiered": { input: 0.75, output: 3.75, cache: 0.075 },
+		"gemini-3.6-flash-high": { input: 0.75, output: 3.75, cache: 0.1875 },
+		"gemini-3.6-flash-medium": { input: 0.75, output: 3.75, cache: 0.1875 },
+		"gemini-3.6-flash-low": { input: 0.75, output: 3.75, cache: 0.1875 },
+		"gemini-3.6-flash-tiered": { input: 0.75, output: 3.75, cache: 0.1875 },
+		"gemini-3.5-flash-lite": { input: 0.15, output: 0.60, cache: 0.015 },
+		"gemini-3.5-flash-low": { input: 1.50, output: 9.00, cache: 0.15 },
+		"gemini-3.5-flash-extra-low": { input: 1.50, output: 9.00, cache: 0.15 },
+		"gemini-3-flash": { input: 0.75, output: 3.75, cache: 0.1875 },
+		"gemini-3-flash-agent": { input: 0.75, output: 3.75, cache: 0.1875 },
+		"gemini-3.1-flash-lite": { input: 0.25, output: 1.50, cache: 0.025 },
+		"gemini-3.1-flash-image": { input: 0.25, output: 1.50, cache: 0.025 },
+		"gemini-2.5-flash": { input: 0.10, output: 0.40, cache: 0.025 },
+		"gemini-2.5-flash-lite": { input: 0.075, output: 0.30, cache: 0.01875 },
+		"gemini-2.5-flash-thinking": { input: 0.30, output: 2.50, cache: 0.075 },
+		"gemini-2.5-pro": { input: 1.25, output: 10.00, cache: 0.125 },
+		"gemini-3.1-pro-high": { input: 2.00, output: 12.00, cache: 0.20 },
+		"gemini-3.1-pro-low": { input: 2.00, output: 12.00, cache: 0.20 },
+		"gemini-pro-agent": { input: 2.00, output: 12.00, cache: 0.20 },
+		"claude-sonnet-4-6": { input: 3.00, output: 15.00, cache: 0.30 },
+		"claude-sonnet": { input: 3.00, output: 15.00, cache: 0.30 },
+		"claude-opus-4-6-thinking": { input: 15.00, output: 75.00, cache: 1.50 },
+		"claude-opus-4-6": { input: 15.00, output: 75.00, cache: 1.50 },
+		"claude-opus": { input: 15.00, output: 75.00, cache: 1.50 },
+		"opus": { input: 15.00, output: 75.00, cache: 1.50 },
+		"gpt-oss-120b-medium": { input: 0.50, output: 2.00, cache: 0.10 }
+	};
+	const DEFAULT_FALLBACK_PRICING = { input: 0.75, output: 3.75, cache: 0.1875 };
+
+	function getFallbackPricing(modelId) {
+		const m = (modelId || "").toLowerCase();
+		if (m.includes("3.7-flash") || m.includes("3.8-flash")) {
+			return { input: 0.75, output: 3.75, cache: 0.075 };
+		}
+		return DEFAULT_FALLBACK_PRICING;
+	}
+
+	const ACCOUNT_PALETTE = [
+		"#0284c7", // Sky blue
+		"#10b981", // Emerald green
+		"#f59e0b", // Amber
+		"#8b5cf6", // Purple
+		"#ec4899", // Pink
+		"#06b6d4", // Cyan
+		"#ef4444", // Red
+		"#84cc16"  // Lime
+	];
+	function getAccountColor(index = 0) {
+		return ACCOUNT_PALETTE[index % ACCOUNT_PALETTE.length];
+	}
+
+	function getModelGroup(modelId) {
+		const lower = (modelId || "").toLowerCase();
+		if (lower.startsWith("claude") || lower.startsWith("gpt") || lower.includes("3p")) return "3p";
+		return "gemini";
+	}
+
+	function formatTokens(num) {
+		if (num === void 0 || num === null || isNaN(num)) return "0";
+		if (num >= 1000000) return (num / 1000000).toFixed(2) + "M";
+		if (num >= 1000) return (num / 1000).toFixed(1) + "k";
+		return num.toLocaleString();
+	}
+
+	function formatCurrency(num) {
+		if (num === void 0 || num === null || isNaN(num)) return "$0.00";
+		if (num === 0) return "$0.00";
+		if (num < 0.0001 && num > 0) return "< $0.0001";
+		if (num < 0.01 && num > 0) return "$" + num.toFixed(4);
+		if (num < 1) return "$" + num.toFixed(4);
+		if (num < 100) return "$" + num.toFixed(2);
+		return "$" + num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+	}
+
+	function formatDuration(ms) {
+		if (!ms || isNaN(ms)) return "0ms";
+		if (ms >= 1000) return (ms / 1000).toFixed(1) + "s";
+		return ms + "ms";
+	}
+
+	function formatTimeAgo(isoString) {
+		if (!isoString) return "";
+		try {
+			const diff = Math.max(0, Math.floor((Date.now() - new Date(isoString).getTime()) / 1000));
+			if (diff < 60) return "刚刚";
+			if (diff < 3600) return Math.floor(diff / 60) + " 分钟前";
+			if (diff < 86400) return Math.floor(diff / 3600) + " 小时前";
+			return Math.floor(diff / 86400) + " 天前";
+		} catch (e) {
+			return isoString.slice(11, 19);
+		}
+	}
+
+	function formatCountdown(seconds) {
+		if (seconds <= 0) return "即将重置";
+		const days = Math.floor(seconds / 86400);
+		const hours = Math.floor((seconds % 86400) / 3600);
+		const mins = Math.floor((seconds % 3600) / 60);
+		if (days > 0) return `${days} 天 ${hours} 小时`;
+		if (hours > 0) return `${hours} 小时 ${mins} 分钟`;
+		return `${mins} 分钟`;
+	}
+
+	function getPercentColor(pct) {
+		if (pct >= 50) return { bar: "#16a34a", bg: "#dcfce7", text: "#15803d" };
+		if (pct >= 20) return { bar: "#d97706", bg: "#fef3c7", text: "#b45309" };
+		return { bar: "#dc2626", bg: "#fee2e2", text: "#b91c1c" };
+	}
+
+	const factory = (require) => {
+		var module = { exports: {} };
+		var exports = module.exports;
+		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+
+		const react_jsx_runtime = require("react/jsx-runtime");
+		const react = require("react");
+		const _deepseek_ai_dsh_client_ui_primitives = (() => {
+			let prim = {};
+			try {
+				prim = require("@deepseek-ai/dsh-client-ui-primitives") || {};
+			} catch (e) {}
+			const FallbackChevron = (props) => (0, react_jsx_runtime.jsx)("svg", {
+				width: props?.size || 14,
+				height: props?.size || 14,
+				viewBox: "0 0 14 14",
+				fill: "none",
+				xmlns: "http://www.w3.org/2000/svg",
+				children: (0, react_jsx_runtime.jsx)("path", {
+					d: "M3.5 5.25L7 8.75L10.5 5.25",
+					stroke: "currentColor",
+					strokeWidth: "1.5",
+					strokeLinecap: "round",
+					strokeLinejoin: "round"
+				})
+			});
+			const ChevronComp = prim.IconChevronDownOutlineRegular || prim.IconChevronDownOutlineMedium || prim.IconChevronDownOutline14 || FallbackChevron;
+			return {
+				...prim,
+				IconChevronDownOutline14: ChevronComp,
+				IconChevronDownOutlineRegular: prim.IconChevronDownOutlineRegular || ChevronComp,
+				IconChevronDownOutlineMedium: prim.IconChevronDownOutlineMedium || ChevronComp
+			};
+		})();
+		const _deepseek_ai_dsh_client_runtime_client = (() => {
+			try {
+				const mod = require("@deepseek-ai/dsh-client-store");
+				if (mod && typeof mod.createSnapshotStore === "function") return mod;
+			} catch (e) {}
+			return {
+				createSnapshotStore: (init) => {
+					let s = init;
+					const subs = new Set();
+					return {
+						get: () => s,
+						set: (n) => { s = n; subs.forEach((cb) => cb()); },
+						subscribe: (cb) => { subs.add(cb); return () => subs.delete(cb); }
+					};
+				}
+			};
+ 		})();
+
+		function AntigravityCard(props) {
+			const [open, setOpen] = react.useState(props.isSection || false);
+			const [activeTab, setActiveTab] = react.useState("quota"); // 'quota' | 'usage' | 'valuation' | 'config'
+			const { t } = props;
+			const state = props.useAntigravityCard((snapshot) => snapshot);
+			const disabled = !state.writable;
+			const dirty = state.draftToken !== void 0 ||
+				state.draftBaseUrl !== void 0 ||
+				(state.draftReportEndpoint !== void 0 && state.draftReportEndpoint !== state.effectiveReportEndpoint) ||
+				(state.draftReportClientId !== void 0 && state.draftReportClientId !== state.effectiveReportClientId) ||
+				(state.draftReportSecret !== void 0 && state.draftReportSecret !== state.effectiveReportSecret) ||
+				(state.draftReportEnabled !== void 0 && state.draftReportEnabled !== state.effectiveReportEnabled) ||
+				(state.draftEnable1MMode !== void 0 && state.draftEnable1MMode !== state.effectiveEnable1MMode);
+
+			// QuotaPilot reporter test state
+			const [testingReporter, setTestingReporter] = react.useState(false);
+			const [reporterTestMsg, setReporterTestMsg] = react.useState(null);
+
+			const handleTestReporter = async () => {
+				setTestingReporter(true);
+				setReporterTestMsg(null);
+				try {
+					if (dirty && typeof props.save === "function") { await props.save(); }
+					const res = await fetch("/api/antigravity/reporter/test", { method: "POST" });
+					const data = await res.json();
+					if (res.ok && data.ok) {
+						setReporterTestMsg({ isError: false, text: t("quotaPilotTestSuccess") });
+					} else {
+						setReporterTestMsg({ isError: true, text: `${t("quotaPilotTestFailed")}${data.error || "HTTP " + res.status}` });
+					}
+				} catch (e) {
+					setReporterTestMsg({ isError: true, text: `${t("quotaPilotTestFailed")}${e.message}` });
+				} finally {
+					setTestingReporter(false);
+				}
+			};
+
+			// Quota & Usage local states
+			const [quotaData, setQuotaData] = react.useState(null);
+			const [loadingQuota, setLoadingQuota] = react.useState(false);
+			const [quotaError, setQuotaError] = react.useState(null);
+
+			const [usageData, setUsageData] = react.useState(null);
+			const [loadingUsage, setLoadingUsage] = react.useState(false);
+			const [usageError, setUsageError] = react.useState(null);
+			const [clearingUsage, setClearingUsage] = react.useState(false);
+
+			// Accounts management states
+			const [accountsData, setAccountsData] = react.useState({ accounts: [], activeAccountId: "" });
+			const [loadingAccounts, setLoadingAccounts] = react.useState(false);
+			const [switchingAccountId, setSwitchingAccountId] = react.useState(null);
+			const [newAccountName, setNewAccountName] = react.useState("");
+			const [newAccountToken, setNewAccountToken] = react.useState("");
+			const [newAccountProxy, setNewAccountProxy] = react.useState("");
+			const [testingProxy, setTestingProxy] = react.useState(false);
+			const [proxyTestResult, setProxyTestResult] = react.useState(null);
+
+			// Editing account state
+			const [editingAccountId, setEditingAccountId] = react.useState(null);
+
+			// Antigravity Web Search Integrated States
+			const searchSelectorScope = props.searchSelectorScope;
+			const webSearchScope = props.webSearchScope;
+			const [searchProvider, setSearchProvider] = react.useState("antigravity");
+			const [searchDraft, setSearchDraft] = react.useState({});
+			const [savingSearch, setSavingSearch] = react.useState(false);
+			const [searchToast, setSearchToast] = react.useState(null);
+
+			react.useEffect(() => {
+				if (!searchSelectorScope) return;
+				const snap = searchSelectorScope.getSnapshot();
+				if (snap?.value?.provider) setSearchProvider(snap.value.provider);
+				return searchSelectorScope.subscribe(() => {
+					const s = searchSelectorScope.getSnapshot();
+					if (s?.value?.provider) setSearchProvider(s.value.provider);
+				});
+			}, [searchSelectorScope]);
+
+			const webSearchSnapshot = webSearchScope?.getSnapshot?.()?.value || {};
+			const currentFetchPageTitles = searchDraft.fetchPageTitles ?? webSearchSnapshot.fetchPageTitles ?? true;
+			const currentDropUnresolved = searchDraft.dropUnresolvedRedirects ?? webSearchSnapshot.dropUnresolvedRedirects ?? false;
+			const currentSearchModel = searchDraft.model ?? webSearchSnapshot.model ?? "gemini-3.7-flash-high";
+			const currentRedirectTimeout = searchDraft.redirectTimeoutMs ?? webSearchSnapshot.redirectTimeoutMs ?? 3000;
+			const currentPageTitleTimeout = searchDraft.pageTitleTimeoutMs ?? webSearchSnapshot.pageTitleTimeoutMs ?? 2500;
+			const currentMaxUses = searchDraft.maxUses ?? webSearchSnapshot.maxUses ?? 5;
+			const searchDirty = Object.keys(searchDraft).length > 0;
+
+			const handleSetSearchProvider = async (val) => {
+				setSearchProvider(val);
+				if (searchSelectorScope) {
+					try {
+						await searchSelectorScope.set("provider", val);
+						setSearchToast((val === "antigravity" ? "Google Antigravity 搜索" : "DeepSeek 官方搜索") + " 已激活");
+						setTimeout(() => setSearchToast(null), 3000);
+					} catch (e) {
+						console.error("Failed to set search provider", e);
+					}
+				}
+			};
+
+			const handleSaveWebSearch = async () => {
+				if (!webSearchScope || !searchDirty) return;
+				setSavingSearch(true);
+				try {
+					const ops = [];
+					for (const [k, v] of Object.entries(searchDraft)) {
+						if (v !== void 0) ops.push({ op: "set", path: [k], value: v });
+					}
+					await webSearchScope.mutate(ops);
+					setSearchDraft({});
+					setSearchToast(t("searchSavedToast") || "搜索配置已保存");
+					setTimeout(() => setSearchToast(null), 3000);
+				} catch (e) {
+					console.error("Failed to save web search", e);
+				} finally {
+					setSavingSearch(false);
+				}
+			};
+			const [editAccountName, setEditAccountName] = react.useState("");
+			const [editAccountToken, setEditAccountToken] = react.useState("");
+			const [editAccountProxy, setEditAccountProxy] = react.useState("");
+			const [savingEditAccount, setSavingEditAccount] = react.useState(false);
+			const [testingEditProxy, setTestingEditProxy] = react.useState(false);
+			const [editProxyTestResult, setEditProxyTestResult] = react.useState(null);
+			const [testingCardProxyId, setTestingCardProxyId] = react.useState(null);
+			const [cardProxyTestResults, setCardProxyTestResults] = react.useState({});
+
+			const [addingAccount, setAddingAccount] = react.useState(false);
+			const [accountError, setAccountError] = react.useState(null);
+			const [accountSuccess, setAccountSuccess] = react.useState(null);
+
+			// Valuation specific states
+			const [activeValuationPeriod, setActiveValuationPeriod] = react.useState("5h"); // '5h' | 'weekly' | 'all'
+			const [selectedGroupFilter, setSelectedGroupFilter] = react.useState("all"); // 'all' | 'gemini' | '3p'
+			const [selectedValuationAccount, setSelectedValuationAccount] = react.useState("all"); // 'all' | accountId
+			const [selectedUsageAccount, setSelectedUsageAccount] = react.useState("all"); // 'all' | accountId
+			const [externalAccountQuotas, setExternalAccountQuotas] = react.useState({}); // { [accountId]: quotaData }
+			const [showAllCatalogModels, setShowAllCatalogModels] = react.useState(false);
+			const [pricingSavedToast, setPricingSavedToast] = react.useState(false);
+			const [baselineToast, setBaselineToast] = react.useState(false);
+
+			// Historical Quota Fluctuation & Line Chart states
+			const [valuationCycles, setValuationCycles] = react.useState([]);
+			const [chartMetric, setChartMetric] = react.useState("estTotal"); // "estTotal" | "usdCost" | "remainingFraction"
+			const [selectedChartAccounts, setSelectedChartAccounts] = react.useState(() => new Set());
+			const [recordingSnapshot, setRecordingSnapshot] = react.useState(false);
+			const [snapshotToast, setSnapshotToast] = react.useState(null);
+			const [hoveredChartPoint, setHoveredChartPoint] = react.useState(null);
+			const lastAutoSnapshotRef = react.useRef("");
+
+			const [quotaBaselines, setQuotaBaselines] = react.useState(() => {
+				try {
+					if (typeof window !== "undefined" && window.localStorage) {
+						const saved = window.localStorage.getItem("antigravity_quota_baselines_v1");
+						if (saved) return JSON.parse(saved);
+					}
+				} catch (e) {}
+				return {};
+			});
+
+			const [pricing, setPricing] = react.useState(() => {
+				try {
+					if (typeof window !== "undefined" && window.localStorage) {
+						const saved = window.localStorage.getItem("antigravity_pricing_v1");
+						if (saved) {
+							const parsed = JSON.parse(saved);
+							// Auto-migrate legacy 0.1875 cache price for Gemini 3.7 / 3.8 Flash series to official 0.075
+							for (const [k, v] of Object.entries(parsed)) {
+								if ((k.includes("3.7-flash") || k.includes("3.8-flash")) && v && v.cache === 0.1875) {
+									v.cache = 0.075;
+								}
+							}
+							return { ...DEFAULT_MODEL_PRICING, ...parsed };
+						}
+					}
+				} catch (e) {}
+				return { ...DEFAULT_MODEL_PRICING };
+			});
+
+			const handlePriceChange = (modelId, key, val) => {
+				const num = parseFloat(val);
+				const currentModelPricing = pricing[modelId] || DEFAULT_MODEL_PRICING[modelId] || DEFAULT_FALLBACK_PRICING;
+				const next = {
+					...pricing,
+					[modelId]: {
+						...currentModelPricing,
+						[key]: isNaN(num) ? 0 : num
+					}
+				};
+				setPricing(next);
+				try {
+					if (typeof window !== "undefined" && window.localStorage) {
+						window.localStorage.setItem("antigravity_pricing_v1", JSON.stringify(next));
+					}
+				} catch (e) {}
+			};
+
+			const handleResetPricing = () => {
+				setPricing({ ...DEFAULT_MODEL_PRICING });
+				try {
+					if (typeof window !== "undefined" && window.localStorage) {
+						window.localStorage.removeItem("antigravity_pricing_v1");
+					}
+				} catch (e) {}
+				setPricingSavedToast(true);
+				setTimeout(() => setPricingSavedToast(false), 2000);
+			};
+
+			const handleSavePricing = () => {
+				try {
+					if (typeof window !== "undefined" && window.localStorage) {
+						window.localStorage.setItem("antigravity_pricing_v1", JSON.stringify(pricing));
+					}
+				} catch (e) {}
+				setPricingSavedToast(true);
+				setTimeout(() => setPricingSavedToast(false), 2000);
+			};
+
+			const getBaselineKey = (accId, bucketId) => `${accId || "default"}_${bucketId}`;
+
+			const fetchAccountQuota = react.useCallback(async (accId) => {
+				if (!accId || accId === "all") return;
+				try {
+					const res = await fetch(`/api/antigravity/quota?accountId=${encodeURIComponent(accId)}`);
+					if (res.ok) {
+						const json = await res.json();
+						if (json.ok) {
+							setExternalAccountQuotas(prev => ({ ...prev, [accId]: json }));
+						}
+					}
+				} catch {}
+			}, []);
+
+			react.useEffect(() => {
+				if (open && activeTab === "valuation" && accountsData.accounts.length > 1) {
+					accountsData.accounts.forEach(acc => {
+						if (acc.id !== accountsData.activeAccountId && !externalAccountQuotas[acc.id]) {
+							fetchAccountQuota(acc.id);
+						}
+					});
+				}
+			}, [open, activeTab, accountsData.accounts, accountsData.activeAccountId, externalAccountQuotas, fetchAccountQuota]);
+
+			const handleSetCurrentAsBaseline = (bucketId, fraction, resetTime, accId) => {
+				if (!bucketId) return;
+				const curAcc = accId || (selectedValuationAccount !== "all" ? selectedValuationAccount : (accountsData.activeAccountId || "default"));
+				const k = getBaselineKey(curAcc, bucketId);
+				const next = {
+					...quotaBaselines,
+					[k]: {
+						resetTime: resetTime || "",
+						baselineFraction: typeof fraction === "number" ? fraction : 1.0,
+						firstSeenTime: Date.now()
+					}
+				};
+				setQuotaBaselines(next);
+				try {
+					if (typeof window !== "undefined" && window.localStorage) {
+						window.localStorage.setItem("antigravity_quota_baselines_v1", JSON.stringify(next));
+					}
+				} catch (e) {}
+				setBaselineToast(true);
+				setTimeout(() => setBaselineToast(false), 2000);
+			};
+
+			// Automatically register initial quota baseline if not yet recorded for this cycle
+			react.useEffect(() => {
+				const effectiveQuota = (selectedValuationAccount !== "all" && selectedValuationAccount !== accountsData.activeAccountId && externalAccountQuotas[selectedValuationAccount])
+					? externalAccountQuotas[selectedValuationAccount]
+					: quotaData;
+				if (!effectiveQuota || !Array.isArray(effectiveQuota.groups)) return;
+				const curAcc = selectedValuationAccount !== "all" ? selectedValuationAccount : (accountsData.activeAccountId || "default");
+				let changed = false;
+				const next = { ...quotaBaselines };
+				for (const g of effectiveQuota.groups) {
+					for (const b of (g.buckets || [])) {
+						if (!b.bucketId) continue;
+						const k = getBaselineKey(curAcc, b.bucketId);
+						const cur = next[k] || next[b.bucketId];
+						if (!cur || cur.resetTime !== b.resetTime) {
+							next[k] = {
+								resetTime: b.resetTime,
+								baselineFraction: typeof b.remainingFraction === "number" ? b.remainingFraction : 1.0,
+								firstSeenTime: Date.now()
+							};
+							changed = true;
+						}
+					}
+				}
+				if (changed) {
+					setQuotaBaselines(next);
+					try {
+						if (typeof window !== "undefined" && window.localStorage) {
+							window.localStorage.setItem("antigravity_quota_baselines_v1", JSON.stringify(next));
+						}
+					} catch (e) {}
+				}
+			}, [quotaData, externalAccountQuotas, selectedValuationAccount, accountsData.activeAccountId, quotaBaselines]);
+
+			const fetchQuota = react.useCallback(async (force = false) => {
+				if (!state.tokenConfigured) return;
+				setLoadingQuota(true);
+				setQuotaError(null);
+				try {
+					const res = await fetch(`/api/antigravity/quota${force ? "?force=true" : ""}`, {
+						method: force ? "POST" : "GET"
+					});
+					if (!res.ok) {
+						const text = await res.text().catch(() => "");
+						if (res.status === 404) {
+							setQuotaError("DSH 后端服务尚未加载最新插件接口，请重启 DSH 服务 (HTTP 404)");
+							return;
+						}
+						setQuotaError(`HTTP ${res.status}: ${text.slice(0, 120)}`);
+						return;
+					}
+					const text = await res.text();
+					let json;
+					try {
+						json = JSON.parse(text);
+					} catch {
+						setQuotaError("返回数据格式非有效 JSON，请确保 DSH 后端已重启并更新");
+						return;
+					}
+					if (json.ok) {
+						setQuotaData(json);
+					} else {
+						setQuotaError(json.error || "Failed to fetch quota");
+					}
+				} catch (e) {
+					setQuotaError(e.message || "Network error");
+				} finally {
+					setLoadingQuota(false);
+				}
+			}, [state.tokenConfigured]);
+
+			const fetchUsage = react.useCallback(async (targetAccId) => {
+				setLoadingUsage(true);
+				setUsageError(null);
+				try {
+					const accParam = (targetAccId !== undefined ? targetAccId : selectedUsageAccount);
+					const query = (accParam && accParam !== "all") ? `?accountId=${encodeURIComponent(accParam)}` : "";
+					const res = await fetch(`/api/antigravity/usage${query}`);
+					if (!res.ok) {
+						const text = await res.text().catch(() => "");
+						if (res.status === 404) {
+							setUsageError("DSH 后端服务尚未加载最新插件接口，请重启 DSH 服务 (HTTP 404)");
+							return;
+						}
+						setUsageError(`HTTP ${res.status}: ${text.slice(0, 120)}`);
+						return;
+					}
+					const text = await res.text();
+					let json;
+					try {
+						json = JSON.parse(text);
+					} catch {
+						setUsageError("返回数据格式非有效 JSON，请确保 DSH 后端已重启并更新");
+						return;
+					}
+					if (json.ok) {
+						setUsageData(json.stats);
+					} else {
+						setUsageError(json.error || "Failed to fetch usage");
+					}
+				} catch (e) {
+					setUsageError(e.message || "Network error");
+				} finally {
+					setLoadingUsage(false);
+				}
+			}, [selectedUsageAccount]);
+
+			const handleClearUsage = react.useCallback(async () => {
+				if (!confirm(t("confirmClear"))) return;
+				setClearingUsage(true);
+				try {
+					const query = (selectedUsageAccount && selectedUsageAccount !== "all") ? `?accountId=${encodeURIComponent(selectedUsageAccount)}` : "";
+					const res = await fetch(`/api/antigravity/usage${query}`, { method: "DELETE" });
+					const json = await res.json();
+					if (json.ok) {
+						await fetchUsage(selectedUsageAccount);
+					}
+				} catch (e) {
+					console.error(e);
+				} finally {
+					setClearingUsage(false);
+				}
+			}, [t, fetchUsage, selectedUsageAccount]);
+
+			const fetchAccounts = react.useCallback(async () => {
+				setLoadingAccounts(true);
+				try {
+					const res = await fetch("/api/antigravity/accounts");
+					if (res.ok) {
+						const data = await res.json();
+						if (data.ok) {
+							setAccountsData({
+								accounts: data.accounts || [],
+								activeAccountId: data.activeAccountId || ""
+							});
+						}
+					}
+				} catch (e) {
+					console.error(e);
+				} finally {
+					setLoadingAccounts(false);
+				}
+			}, []);
+
+			const handleSwitchAccount = react.useCallback(async (id) => {
+				setSwitchingAccountId(id);
+				setAccountError(null);
+				try {
+					const res = await fetch("/api/antigravity/accounts/switch", {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ accountId: id })
+					});
+					const data = await res.json();
+					if (data.ok) {
+						setAccountsData(prev => ({
+							...prev,
+							activeAccountId: data.activeAccountId,
+							accounts: data.accounts || prev.accounts
+						}));
+						setAccountSuccess(t("accountSwitched"));
+						setTimeout(() => setAccountSuccess(null), 3500);
+						setQuotaData(null);
+						fetchQuota(true);
+						fetchUsage();
+					} else {
+						setAccountError(data.error || "Failed to switch account");
+					}
+				} catch (e) {
+					setAccountError(e.message || "Network error");
+				} finally {
+					setSwitchingAccountId(null);
+				}
+			}, [t, fetchQuota, fetchUsage]);
+
+			const handleTestProxy = react.useCallback(async (proxyStr, targetType, accountId) => {
+				if (!proxyStr || !proxyStr.trim()) {
+					if (targetType === "new") {
+						setProxyTestResult({ ok: false, msg: t("proxyEmptyPrompt") || "请输入代理地址" });
+					} else if (targetType === "edit") {
+						setEditProxyTestResult({ ok: false, msg: t("proxyEmptyPrompt") || "请输入代理地址" });
+					}
+					return;
+				}
+				if (targetType === "new") {
+					setTestingProxy(true);
+					setProxyTestResult(null);
+				} else if (targetType === "edit") {
+					setTestingEditProxy(true);
+					setEditProxyTestResult(null);
+				} else if (targetType === "card" && accountId) {
+					setTestingCardProxyId(accountId);
+				}
+				try {
+					const res = await fetch("/api/antigravity/proxy/test", {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ proxy: proxyStr.trim() })
+					});
+					const data = await res.json();
+					const result = data.ok
+						? { ok: true, msg: `✓ ${t("proxyTestSuccess")} (${data.latencyMs}ms)` }
+						: { ok: false, msg: `✗ ${t("proxyTestFailed")}: ${data.error}` };
+					if (targetType === "new") {
+						setProxyTestResult(result);
+					} else if (targetType === "edit") {
+						setEditProxyTestResult(result);
+					} else if (targetType === "card" && accountId) {
+						setCardProxyTestResults(prev => ({ ...prev, [accountId]: result }));
+						setTimeout(() => {
+							setCardProxyTestResults(prev => {
+								const next = { ...prev };
+								delete next[accountId];
+								return next;
+							});
+						}, 5000);
+					}
+				} catch (err) {
+					const result = { ok: false, msg: `✗ ${t("proxyTestFailed")}: ${err.message || String(err)}` };
+					if (targetType === "new") {
+						setProxyTestResult(result);
+					} else if (targetType === "edit") {
+						setEditProxyTestResult(result);
+					} else if (targetType === "card" && accountId) {
+						setCardProxyTestResults(prev => ({ ...prev, [accountId]: result }));
+					}
+				} finally {
+					if (targetType === "new") setTestingProxy(false);
+					if (targetType === "edit") setTestingEditProxy(false);
+					if (targetType === "card") setTestingCardProxyId(null);
+				}
+			}, [t]);
+
+			const startEditAccount = react.useCallback((acc) => {
+				setEditingAccountId(acc.id);
+				setEditAccountName(acc.name || "");
+				setEditAccountToken("");
+				setEditAccountProxy(acc.proxy || "");
+				setEditProxyTestResult(null);
+				setAccountError(null);
+			}, []);
+
+			const cancelEditAccount = react.useCallback(() => {
+				setEditingAccountId(null);
+				setEditAccountName("");
+				setEditAccountToken("");
+				setEditAccountProxy("");
+				setEditProxyTestResult(null);
+			}, []);
+
+			const handleUpdateAccount = react.useCallback(async (id) => {
+				setSavingEditAccount(true);
+				setAccountError(null);
+				try {
+					const payload = {
+						name: editAccountName.trim(),
+						proxy: editAccountProxy.trim(),
+					};
+					if (editAccountToken && editAccountToken.trim()) {
+						payload.refreshToken = editAccountToken.trim();
+					}
+					const res = await fetch(`/api/antigravity/accounts/${id}`, {
+						method: "PUT",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify(payload)
+					});
+					const data = await res.json();
+					if (data.ok) {
+						setEditingAccountId(null);
+						setEditProxyTestResult(null);
+						setAccountsData(prev => ({
+							...prev,
+							activeAccountId: data.activeAccountId,
+							accounts: data.accounts || prev.accounts
+						}));
+						setAccountSuccess(t("accountUpdated"));
+						setTimeout(() => setAccountSuccess(null), 3500);
+						if (data.activeAccountId === id) {
+							setQuotaData(null);
+							fetchQuota(true);
+							fetchUsage();
+						}
+					} else {
+						setAccountError(data.error || "Failed to update account");
+					}
+				} catch (e) {
+					setAccountError(e.message || "Network error");
+				} finally {
+					setSavingEditAccount(false);
+				}
+			}, [editAccountName, editAccountToken, editAccountProxy, t, fetchQuota, fetchUsage]);
+
+			const handleAddAccount = react.useCallback(async () => {
+				if (!newAccountToken.trim()) {
+					setAccountError(t("accountTokenRequired"));
+					return;
+				}
+				setAddingAccount(true);
+				setAccountError(null);
+				try {
+					const res = await fetch("/api/antigravity/accounts", {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({
+							name: newAccountName.trim(),
+							refreshToken: newAccountToken.trim(),
+							proxy: newAccountProxy.trim(),
+							setActive: true
+						})
+					});
+					const data = await res.json();
+					if (data.ok) {
+						setNewAccountName("");
+						setNewAccountToken("");
+						setNewAccountProxy("");
+						setProxyTestResult(null);
+						setAccountsData(prev => ({
+							...prev,
+							activeAccountId: data.activeAccountId,
+							accounts: data.accounts || prev.accounts
+						}));
+						setAccountSuccess(t("accountAdded"));
+						setTimeout(() => setAccountSuccess(null), 3500);
+						setQuotaData(null);
+						fetchQuota(true);
+						fetchUsage();
+					} else {
+						setAccountError(data.error || "Failed to add account");
+					}
+				} catch (e) {
+					setAccountError(e.message || "Network error");
+				} finally {
+					setAddingAccount(false);
+				}
+			}, [newAccountName, newAccountToken, newAccountProxy, t, fetchQuota, fetchUsage]);
+
+			const handleDeleteAccount = react.useCallback(async (id) => {
+				if (!confirm(t("confirmDeleteAccount"))) return;
+				try {
+					const res = await fetch(`/api/antigravity/accounts/${id}`, {
+						method: "DELETE"
+					});
+					const data = await res.json();
+					if (data.ok) {
+						setAccountsData(prev => ({
+							...prev,
+							activeAccountId: data.activeAccountId,
+							accounts: data.accounts || prev.accounts
+						}));
+						setQuotaData(null);
+						fetchQuota(true);
+					}
+				} catch (e) {
+					console.error(e);
+				}
+			}, [t, fetchQuota]);
+
+			// Auto fetch when opening tab
+			react.useEffect(() => {
+				if (open) {
+					fetchAccounts();
+				}
+				if (open && (activeTab === "quota" || activeTab === "valuation") && !quotaData && state.tokenConfigured) {
+					fetchQuota(false);
+				}
+				if (open && (activeTab === "usage" || activeTab === "valuation") && !usageData) {
+					fetchUsage();
+				}
+			}, [open, activeTab, state.tokenConfigured, quotaData, usageData, fetchQuota, fetchUsage, fetchAccounts]);
+
+			// -------------------------------------------------------------
+			// Compute Window & Quota Valuation Calculation
+			// -------------------------------------------------------------
+			let targetBucket = null;
+			let bucketResetTime = null;
+			let bucketRemainingFraction = null;
+			let bucketResetInSeconds = 0;
+
+			const effectiveValuationQuota = (selectedValuationAccount !== "all" && selectedValuationAccount !== accountsData.activeAccountId && externalAccountQuotas[selectedValuationAccount])
+				? externalAccountQuotas[selectedValuationAccount]
+				: quotaData;
+
+			if (effectiveValuationQuota && Array.isArray(effectiveValuationQuota.groups)) {
+				const geminiGroup = effectiveValuationQuota.groups.find(g => (g.displayName || "").toLowerCase().includes("gemini"));
+				const thirdPartyGroup = effectiveValuationQuota.groups.find(g => (g.displayName || "").toLowerCase().includes("claude") || (g.displayName || "").toLowerCase().includes("3p"));
+
+				let activeGroupObj = null;
+				if (selectedGroupFilter === "gemini") activeGroupObj = geminiGroup;
+				else if (selectedGroupFilter === "3p") activeGroupObj = thirdPartyGroup;
+				else activeGroupObj = geminiGroup || effectiveValuationQuota.groups[0];
+
+				if (activeGroupObj && Array.isArray(activeGroupObj.buckets)) {
+					if (activeValuationPeriod === "5h") {
+						targetBucket = activeGroupObj.buckets.find(b => b.window === "5h") || activeGroupObj.buckets[1] || activeGroupObj.buckets[0];
+					} else if (activeValuationPeriod === "weekly") {
+						targetBucket = activeGroupObj.buckets.find(b => b.window === "weekly") || activeGroupObj.buckets[0];
+					}
+				}
+				if (targetBucket) {
+					bucketResetTime = targetBucket.resetTime;
+					bucketRemainingFraction = typeof targetBucket.remainingFraction === "number" ? targetBucket.remainingFraction : null;
+					bucketResetInSeconds = targetBucket.resetInSeconds || 0;
+				}
+			}
+
+			// Time range computation
+			const nowMs = Date.now();
+			let windowEndMs = nowMs;
+			if (bucketResetTime) {
+				const parsed = new Date(bucketResetTime).getTime();
+				if (!isNaN(parsed)) windowEndMs = parsed;
+			}
+			let windowStartMs = 0;
+			if (activeValuationPeriod === "5h") {
+				windowStartMs = windowEndMs - (5 * 3600 * 1000);
+			} else if (activeValuationPeriod === "weekly") {
+				windowStartMs = windowEndMs - (7 * 24 * 3600 * 1000);
+			} else {
+				windowStartMs = 0;
+				windowEndMs = nowMs + 86400000;
+			}
+
+			// Aggregate usage items in [windowStartMs, windowEndMs]
+			const historyList = (usageData && Array.isArray(usageData.history) && usageData.history.length > 0)
+				? usageData.history
+				: ((usageData && Array.isArray(usageData.recent)) ? usageData.recent : []);
+
+			const windowModelStats = {};
+			if (activeValuationPeriod === "all" && usageData && usageData.byModel && selectedValuationAccount === "all") {
+				for (const [mName, mStat] of Object.entries(usageData.byModel)) {
+					if (selectedGroupFilter !== "all" && getModelGroup(mName) !== selectedGroupFilter) continue;
+					windowModelStats[mName] = {
+						requests: mStat.requests || 0,
+						inputTokens: mStat.inputTokens || 0,
+						outputTokens: mStat.outputTokens || 0,
+						reasoningTokens: mStat.reasoningTokens || 0,
+						cacheReadTokens: mStat.cacheReadTokens || 0,
+						totalTokens: mStat.totalTokens || 0,
+					};
+				}
+			} else {
+				for (const rec of historyList) {
+					const recTime = new Date(rec.timestamp).getTime();
+					if (isNaN(recTime)) continue;
+					if (recTime >= windowStartMs && recTime <= windowEndMs) {
+						if (selectedValuationAccount !== "all") {
+							const isTarget = rec.accountId ? (rec.accountId === selectedValuationAccount) : (selectedValuationAccount === (accountsData.activeAccountId || accountsData.accounts?.[0]?.id));
+							if (!isTarget) continue;
+						}
+						const mName = rec.model || "unknown";
+						if (selectedGroupFilter !== "all" && getModelGroup(mName) !== selectedGroupFilter) continue;
+						if (!windowModelStats[mName]) {
+							windowModelStats[mName] = {
+								requests: 0,
+								inputTokens: 0,
+								outputTokens: 0,
+								reasoningTokens: 0,
+								cacheReadTokens: 0,
+								totalTokens: 0,
+							};
+						}
+						const st = windowModelStats[mName];
+						st.requests++;
+						st.inputTokens += (rec.inputTokens || 0);
+						st.outputTokens += (rec.outputTokens || 0);
+						st.reasoningTokens += (rec.reasoningTokens || 0);
+						st.cacheReadTokens += (rec.cacheReadTokens || 0);
+						st.totalTokens += ((rec.inputTokens || 0) + (rec.outputTokens || 0) + (rec.reasoningTokens || 0));
+					}
+				}
+			}
+
+			// Compile model cost list
+			const displayedModelKeys = new Set(Object.keys(windowModelStats));
+			if (showAllCatalogModels) {
+				for (const k of Object.keys(DEFAULT_MODEL_PRICING)) {
+					if (selectedGroupFilter === "all" || getModelGroup(k) === selectedGroupFilter) {
+						displayedModelKeys.add(k);
+					}
+				}
+			}
+
+			let totalPeriodInputTokens = 0;
+			let totalPeriodOutputTokens = 0;
+			let totalPeriodReasoningTokens = 0;
+			let totalPeriodCacheReadTokens = 0;
+			let totalPeriodUsdCost = 0;
+
+			const modelCostList = [];
+			for (const mId of Array.from(displayedModelKeys).sort()) {
+				const stats = windowModelStats[mId] || { requests: 0, inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, totalTokens: 0 };
+				const fallbackP = getFallbackPricing(mId);
+				const p = pricing[mId] || DEFAULT_MODEL_PRICING[mId] || fallbackP;
+				const pIn = typeof p.input === "number" ? p.input : fallbackP.input;
+				const pOut = typeof p.output === "number" ? p.output : fallbackP.output;
+				const pCache = typeof p.cache === "number" ? p.cache : fallbackP.cache;
+
+				const outputWithReasoning = (stats.outputTokens || 0) + (stats.reasoningTokens || 0);
+				const inCost = ((stats.inputTokens || 0) * pIn) / 1000000;
+				const outCost = (outputWithReasoning * pOut) / 1000000;
+				const cacheCost = ((stats.cacheReadTokens || 0) * pCache) / 1000000;
+				const usdCost = inCost + outCost + cacheCost;
+
+				totalPeriodInputTokens += stats.inputTokens;
+				totalPeriodOutputTokens += stats.outputTokens;
+				totalPeriodReasoningTokens += stats.reasoningTokens;
+				totalPeriodCacheReadTokens += stats.cacheReadTokens;
+				totalPeriodUsdCost += usdCost;
+
+				modelCostList.push({
+					modelId: mId,
+					stats,
+					pricing: { input: pIn, output: pOut, cache: pCache },
+					outputWithReasoning,
+					inCost,
+					outCost,
+					cacheCost,
+					usdCost
+				});
+			}
+
+			// Multi-Account Estimation Matrix Calculation
+			const accountMatrixList = react.useMemo(() => {
+				if (!accountsData.accounts || accountsData.accounts.length <= 1) return [];
+				return accountsData.accounts.map(acc => {
+					const accQuota = acc.id === accountsData.activeAccountId
+						? quotaData
+						: (externalAccountQuotas[acc.id] || null);
+
+					let accBucket = null;
+					if (accQuota && Array.isArray(accQuota.groups)) {
+						let grp = accQuota.groups[0];
+						if (selectedGroupFilter === "gemini") grp = accQuota.groups.find(g => (g.displayName || "").toLowerCase().includes("gemini")) || grp;
+						else if (selectedGroupFilter === "3p") grp = accQuota.groups.find(g => (g.displayName || "").toLowerCase().includes("claude") || (g.displayName || "").toLowerCase().includes("3p")) || grp;
+						if (grp && Array.isArray(grp.buckets)) {
+							if (activeValuationPeriod === "5h") accBucket = grp.buckets.find(b => b.window === "5h") || grp.buckets[1] || grp.buckets[0];
+							else if (activeValuationPeriod === "weekly") accBucket = grp.buckets.find(b => b.window === "weekly") || grp.buckets[0];
+						}
+					}
+					const accRemFraction = accBucket && typeof accBucket.remainingFraction === "number" ? accBucket.remainingFraction : null;
+
+					let accReqs = 0;
+					let accInput = 0;
+					let accOutput = 0;
+					let accCache = 0;
+					let accReasoning = 0;
+					let accCost = 0;
+
+					for (const rec of historyList) {
+						const recTime = new Date(rec.timestamp).getTime();
+						if (isNaN(recTime) || recTime < windowStartMs || recTime > windowEndMs) continue;
+						const isTarget = rec.accountId ? (rec.accountId === acc.id) : (acc.id === (accountsData.activeAccountId || accountsData.accounts?.[0]?.id));
+						if (!isTarget) continue;
+						const mName = rec.model || "unknown";
+						if (selectedGroupFilter !== "all" && getModelGroup(mName) !== selectedGroupFilter) continue;
+
+						const fallbackP = getFallbackPricing(mName);
+						const p = pricing[mName] || DEFAULT_MODEL_PRICING[mName] || fallbackP;
+						const pIn = typeof p.input === "number" ? p.input : fallbackP.input;
+						const pOut = typeof p.output === "number" ? p.output : fallbackP.output;
+						const pCache = typeof p.cache === "number" ? p.cache : fallbackP.cache;
+
+						const inTok = rec.inputTokens || 0;
+						const outTok = (rec.outputTokens || 0) + (rec.reasoningTokens || 0);
+						const cacheTok = rec.cacheReadTokens || 0;
+
+						accReqs++;
+						accInput += inTok;
+						accOutput += (rec.outputTokens || 0);
+						accCache += cacheTok;
+						accReasoning += (rec.reasoningTokens || 0);
+						accCost += ((inTok * pIn) + (outTok * pOut) + (cacheTok * pCache)) / 1000000;
+					}
+
+					let accEstTotal = null;
+					let accEstRemaining = null;
+					if (accRemFraction !== null) {
+						const usedF = Math.max(0, 1 - accRemFraction);
+						if (usedF > 0.0001 && accCost > 0) {
+							accEstTotal = accCost / usedF;
+							accEstRemaining = accEstTotal * accRemFraction;
+						}
+					}
+
+					return {
+						account: acc,
+						requests: accReqs,
+						tokens: accInput + accOutput + accReasoning,
+						usdCost: accCost,
+						remainingFraction: accRemFraction,
+						estTotal: accEstTotal,
+						estRemaining: accEstRemaining,
+						tier: acc.tier || accQuota?.tier?.paidTier || accQuota?.tier?.name || "Google AI",
+					};
+				});
+			}, [accountsData.accounts, accountsData.activeAccountId, quotaData, externalAccountQuotas, historyList, windowStartMs, windowEndMs, selectedGroupFilter, activeValuationPeriod, pricing]);
+
+			// Quota percentage and estimation calculation
+			const remainingPct = typeof bucketRemainingFraction === "number" ? Math.round(bucketRemainingFraction * 1000) / 10 : null;
+			const usedFraction = typeof bucketRemainingFraction === "number" ? Math.max(0, 1 - bucketRemainingFraction) : null;
+			const usedPct = usedFraction !== null ? Math.round(usedFraction * 1000) / 10 : null;
+
+			// Delta calibration mode (handles non-full initial quota at startup)
+			let isDeltaMode = false;
+			let baselineFraction = null;
+			let deltaFraction = null;
+			let deltaUsedPct = null;
+
+			if (targetBucket && targetBucket.bucketId) {
+				const bId = targetBucket.bucketId;
+				const curAcc = selectedValuationAccount !== "all" ? selectedValuationAccount : (accountsData.activeAccountId || "default");
+				const baseInfo = quotaBaselines[getBaselineKey(curAcc, bId)] || quotaBaselines[bId];
+				if (baseInfo && baseInfo.resetTime === bucketResetTime && typeof baseInfo.baselineFraction === "number") {
+					baselineFraction = baseInfo.baselineFraction;
+					// If baseline started below 99.5%, use marginal delta deduction
+					if (baselineFraction < 0.995 && typeof bucketRemainingFraction === "number") {
+						deltaFraction = Math.max(0, baselineFraction - bucketRemainingFraction);
+						if (deltaFraction > 0.0001) {
+							isDeltaMode = true;
+							deltaUsedPct = Math.round(deltaFraction * 1000) / 10;
+						}
+					}
+				}
+			}
+
+			let estTotalQuotaUsd = null;
+			let estRemainingQuotaUsd = null;
+
+			if (isDeltaMode && deltaFraction !== null && deltaFraction > 0.0001) {
+				if (totalPeriodUsdCost > 0) {
+					estTotalQuotaUsd = totalPeriodUsdCost / deltaFraction;
+					estRemainingQuotaUsd = estTotalQuotaUsd * (bucketRemainingFraction ?? 0);
+				}
+			} else if (usedFraction !== null && usedFraction > 0.0001) {
+				if (totalPeriodUsdCost > 0) {
+					estTotalQuotaUsd = totalPeriodUsdCost / usedFraction;
+					estRemainingQuotaUsd = estTotalQuotaUsd * (bucketRemainingFraction ?? 0);
+				}
+			}
+
+			// -------------------------------------------------------------
+			// Historical Valuation & Fluctuation Line Chart Handlers
+			// -------------------------------------------------------------
+			react.useEffect(() => {
+				if (accountsData.accounts && accountsData.accounts.length > 0) {
+					setSelectedChartAccounts(prev => {
+						if (!prev || prev.size === 0) {
+							return new Set(accountsData.accounts.map(a => a.id));
+						}
+						return prev;
+					});
+				}
+			}, [accountsData.accounts]);
+
+			const fetchValuationHistory = react.useCallback(async (p) => {
+				const period = p || (activeValuationPeriod === "all" ? "5h" : activeValuationPeriod);
+				try {
+					const res = await fetch(`/api/antigravity/valuation/history?period=${encodeURIComponent(period)}`);
+					if (res.ok) {
+						const json = await res.json();
+						if (json.ok && Array.isArray(json.cycles)) {
+							setValuationCycles(json.cycles);
+						}
+					}
+				} catch (e) {
+					console.error("Failed to fetch valuation history:", e);
+				}
+			}, [activeValuationPeriod]);
+
+			react.useEffect(() => {
+				if (open && activeTab === "valuation") {
+					fetchValuationHistory();
+				}
+			}, [open, activeTab, fetchValuationHistory]);
+
+			const handleRecordSnapshot = react.useCallback(async (manual = false) => {
+				const period = activeValuationPeriod === "all" ? "5h" : activeValuationPeriod;
+				const rTime = bucketResetTime || new Date(windowEndMs).toISOString();
+				const cycleId = `${period}_${rTime}`;
+
+				const accMap = {};
+				if (accountMatrixList && accountMatrixList.length > 0) {
+					for (const row of accountMatrixList) {
+						accMap[row.account.id] = {
+							accountId: row.account.id,
+							accountName: row.account.name || row.account.email || row.account.id,
+							accountEmail: row.account.email || "",
+							tier: row.tier || "",
+							requests: row.requests,
+							tokens: row.tokens,
+							usdCost: row.usdCost,
+							remainingFraction: row.remainingFraction,
+							usedFraction: row.remainingFraction !== null ? Math.max(0, 1 - row.remainingFraction) : null,
+							estTotalValue: row.estTotal,
+							estRemainingValue: row.estRemaining,
+						};
+					}
+				} else if (accountsData.accounts && accountsData.accounts.length > 0) {
+					const acc = accountsData.accounts.find(a => a.id === accountsData.activeAccountId) || accountsData.accounts[0];
+					accMap[acc.id] = {
+						accountId: acc.id,
+						accountName: acc.name || acc.email || acc.id,
+						accountEmail: acc.email || "",
+						tier: acc.tier || "",
+						requests: usageData?.summary?.totalRequests || 0,
+						tokens: totalPeriodInputTokens + totalPeriodOutputTokens + totalPeriodReasoningTokens,
+						usdCost: totalPeriodUsdCost,
+						remainingFraction: bucketRemainingFraction,
+						usedFraction: usedFraction,
+						estTotalValue: estTotalQuotaUsd,
+						estRemainingValue: estRemainingQuotaUsd,
+					};
+				}
+
+				const payload = {
+					cycleId,
+					period,
+					resetTime: rTime,
+					windowStart: windowStartMs,
+					windowEnd: windowEndMs,
+					accounts: accMap,
+					totalRequests: Object.values(accMap).reduce((s, a) => s + (a.requests || 0), 0),
+					totalTokens: Object.values(accMap).reduce((s, a) => s + (a.tokens || 0), 0),
+					totalUsdCost: totalPeriodUsdCost,
+					estTotalValue: estTotalQuotaUsd,
+					estRemainingValue: estRemainingQuotaUsd,
+				};
+
+				if (manual) setRecordingSnapshot(true);
+				try {
+					const res = await fetch(`/api/antigravity/valuation/history?period=${encodeURIComponent(period)}`, {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify(payload)
+					});
+					if (res.ok) {
+						const json = await res.json();
+						if (json.ok && Array.isArray(json.cycles)) {
+							setValuationCycles(json.cycles);
+							if (manual) {
+								setSnapshotToast(t("snapshotRecordedToast"));
+								setTimeout(() => setSnapshotToast(null), 3000);
+							}
+						}
+					}
+				} catch (e) {
+					console.error("Failed to record snapshot:", e);
+				} finally {
+					if (manual) setRecordingSnapshot(false);
+				}
+			}, [activeValuationPeriod, bucketResetTime, windowEndMs, windowStartMs, accountMatrixList, accountsData.accounts, accountsData.activeAccountId, usageData, totalPeriodInputTokens, totalPeriodOutputTokens, totalPeriodReasoningTokens, totalPeriodUsdCost, bucketRemainingFraction, usedFraction, estTotalQuotaUsd, estRemainingQuotaUsd, t]);
+
+			react.useEffect(() => {
+				if (!open || activeTab !== "valuation") return;
+				const period = activeValuationPeriod === "all" ? "5h" : activeValuationPeriod;
+				const rTime = bucketResetTime || new Date(windowEndMs).toISOString();
+				const syncKey = `${period}_${rTime}_${totalPeriodUsdCost.toFixed(4)}_${bucketRemainingFraction}`;
+				if (lastAutoSnapshotRef.current !== syncKey && (totalPeriodUsdCost > 0 || bucketRemainingFraction !== null)) {
+					lastAutoSnapshotRef.current = syncKey;
+					handleRecordSnapshot(false);
+				}
+			}, [open, activeTab, activeValuationPeriod, bucketResetTime, windowEndMs, totalPeriodUsdCost, bucketRemainingFraction, handleRecordSnapshot]);
+
+			const handleClearValuationHistory = react.useCallback(async () => {
+				if (!confirm(t("confirmClearHistory"))) return;
+				const period = activeValuationPeriod === "all" ? "all" : activeValuationPeriod;
+				try {
+					const res = await fetch(`/api/antigravity/valuation/history?period=${encodeURIComponent(period)}`, { method: "DELETE" });
+					if (res.ok) {
+						setValuationCycles([]);
+					}
+				} catch (e) {
+					console.error(e);
+				}
+			}, [t, activeValuationPeriod]);
+
+			const toggleChartAccount = (accId) => {
+				setSelectedChartAccounts(prev => {
+					const next = new Set(prev);
+					if (next.has(accId)) next.delete(accId);
+					else next.add(accId);
+					return next;
+				});
+			};
+			const selectAllChartAccounts = () => {
+				if (accountsData.accounts) {
+					setSelectedChartAccounts(new Set(accountsData.accounts.map(a => a.id)));
+				}
+			};
+			const deselectAllChartAccounts = () => {
+				setSelectedChartAccounts(new Set());
+			};
+
+			return (0, react_jsx_runtime.jsxs)(props.isSection ? "div" : "li", {
+				style: {
+					borderRadius: 16,
+					border: "0.5px solid " + (open ? "var(--dsw-alias-label-dimmed, #d1d5db)" : "var(--dsw-alias-border-l4, #e5e7eb)"),
+					background: open ? "var(--dsw-alias-bg-layer-2, #ffffff)" : "var(--dsw-alias-bg-layer-3, #ffffff)",
+					marginBottom: 16,
+					overflow: "hidden",
+					listStyle: "none",
+					transition: "border-color 0.16s, background 0.16s"
+				},
+				children: [
+					// Card Header
+					(0, react_jsx_runtime.jsxs)("button", {
+						type: "button",
+						style: {
+							display: "flex",
+							alignItems: "center",
+							justifyContent: "space-between",
+							width: "100%",
+							padding: "16px 20px",
+							background: "none",
+							border: "none",
+							cursor: "pointer",
+							textAlign: "left"
+						},
+						onClick: () => setOpen(!open),
+						children: [
+							(0, react_jsx_runtime.jsxs)("div", {
+								children: [
+									(0, react_jsx_runtime.jsx)("div", {
+										style: { fontSize: 14, fontWeight: 600, color: "var(--dsw-alias-label-primary, #111827)" },
+										children: t("title")
+									}),
+									(0, react_jsx_runtime.jsx)("div", {
+										style: { fontSize: 12, color: "var(--dsw-alias-label-secondary, #6b7280)", marginTop: 4 },
+										children: t("description")
+									})
+								]
+							}),
+							(0, react_jsx_runtime.jsxs)("div", {
+								style: { display: "flex", alignItems: "center", gap: 8 },
+								children: [
+									state.tokenConfigured ? (0, react_jsx_runtime.jsx)("span", {
+										style: { fontSize: 11, padding: "2px 8px", borderRadius: 999, background: "#dcfce7", color: "#16a34a", fontWeight: 500 },
+										children: t("tokenConfigured")
+									}) : (0, react_jsx_runtime.jsx)("span", {
+										style: { fontSize: 11, padding: "2px 8px", borderRadius: 999, background: "#fee2e2", color: "#dc2626", fontWeight: 500 },
+										children: t("tokenMissing")
+									}),
+									dirty ? (0, react_jsx_runtime.jsx)("span", {
+										style: { fontSize: 11, padding: "2px 8px", borderRadius: 999, background: "var(--dsw-alias-brand-subtle, #e0f2fe)", color: "var(--dsw-alias-brand-primary, #0284c7)" },
+										children: t("unsaved")
+									}) : null,
+									(0, react_jsx_runtime.jsx)("span", {
+										style: {
+											display: "inline-flex",
+											alignItems: "center",
+											justifyContent: "center",
+											color: "var(--dsw-alias-label-tertiary, #9ca3af)",
+											transform: open ? "rotate(180deg)" : "rotate(0deg)",
+											transition: "transform 0.16s ease",
+											flexShrink: 0
+										},
+										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronDownOutline14, { size: 14 })
+									})
+								]
+							})
+						]
+					}),
+
+					// Collapsible Body
+					open ? (0, react_jsx_runtime.jsxs)("div", {
+						style: { borderTop: "1px solid var(--dsw-alias-border-l3, #f3f4f6)" },
+						children: [
+							// Navigation Tab Bar
+							(0, react_jsx_runtime.jsxs)("div", {
+								style: {
+									display: "flex",
+									gap: 4,
+									padding: "10px 20px 0 20px",
+									borderBottom: "1px solid var(--dsw-alias-border-l3, #f3f4f6)",
+									background: "var(--dsw-alias-bg-layer-1, #f9fafb)",
+									overflowX: "auto"
+								},
+								children: [
+									(0, react_jsx_runtime.jsx)("button", {
+										type: "button",
+										style: {
+											padding: "8px 16px",
+											fontSize: 13,
+											fontWeight: activeTab === "quota" ? 600 : 400,
+											color: activeTab === "quota" ? "var(--dsw-alias-brand-primary, #0284c7)" : "var(--dsw-alias-label-secondary, #6b7280)",
+											background: "none",
+											border: "none",
+											borderBottom: activeTab === "quota" ? "2px solid var(--dsw-alias-brand-primary, #0284c7)" : "2px solid transparent",
+											cursor: "pointer",
+											whiteSpace: "nowrap"
+										},
+										onClick: () => setActiveTab("quota"),
+										children: `⚡ ${t("tabQuota")}`
+									}),
+									(0, react_jsx_runtime.jsx)("button", {
+										type: "button",
+										style: {
+											padding: "8px 16px",
+											fontSize: 13,
+											fontWeight: activeTab === "accounts" ? 600 : 400,
+											color: activeTab === "accounts" ? "var(--dsw-alias-brand-primary, #0284c7)" : "var(--dsw-alias-label-secondary, #6b7280)",
+											background: "none",
+											border: "none",
+											borderBottom: activeTab === "accounts" ? "2px solid var(--dsw-alias-brand-primary, #0284c7)" : "2px solid transparent",
+											cursor: "pointer",
+											whiteSpace: "nowrap"
+										},
+										onClick: () => {
+											setActiveTab("accounts");
+											fetchAccounts();
+										},
+										children: `👥 ${t("tabAccounts")}${accountsData.accounts.length > 0 ? ` (${accountsData.accounts.length})` : ""}`
+									}),
+									(0, react_jsx_runtime.jsx)("button", {
+										type: "button",
+										style: {
+											padding: "8px 16px",
+											fontSize: 13,
+											fontWeight: activeTab === "usage" ? 600 : 400,
+											color: activeTab === "usage" ? "var(--dsw-alias-brand-primary, #0284c7)" : "var(--dsw-alias-label-secondary, #6b7280)",
+											background: "none",
+											border: "none",
+											borderBottom: activeTab === "usage" ? "2px solid var(--dsw-alias-brand-primary, #0284c7)" : "2px solid transparent",
+											cursor: "pointer",
+											whiteSpace: "nowrap"
+										},
+										onClick: () => setActiveTab("usage"),
+										children: `📊 ${t("tabUsage")}`
+									}),
+									(0, react_jsx_runtime.jsx)("button", {
+										type: "button",
+										style: {
+											padding: "8px 16px",
+											fontSize: 13,
+											fontWeight: activeTab === "valuation" ? 600 : 400,
+											color: activeTab === "valuation" ? "var(--dsw-alias-brand-primary, #0284c7)" : "var(--dsw-alias-label-secondary, #6b7280)",
+											background: "none",
+											border: "none",
+											borderBottom: activeTab === "valuation" ? "2px solid var(--dsw-alias-brand-primary, #0284c7)" : "2px solid transparent",
+											cursor: "pointer",
+											whiteSpace: "nowrap"
+										},
+										onClick: () => setActiveTab("valuation"),
+										children: `💰 ${t("tabValuation")}`
+									}),
+									(0, react_jsx_runtime.jsx)("button", {
+										type: "button",
+										style: {
+											padding: "8px 16px",
+											fontSize: 13,
+											fontWeight: activeTab === "search" ? 600 : 400,
+											color: activeTab === "search" ? "var(--dsw-alias-brand-primary, #0284c7)" : "var(--dsw-alias-label-secondary, #6b7280)",
+											background: "none",
+											border: "none",
+											borderBottom: activeTab === "search" ? "2px solid var(--dsw-alias-brand-primary, #0284c7)" : "2px solid transparent",
+											cursor: "pointer",
+											whiteSpace: "nowrap"
+										},
+										onClick: () => setActiveTab("search"),
+										children: `🔍 ${t("tabSearch") || "联网搜索"}`
+									}),
+									(0, react_jsx_runtime.jsx)("button", {
+										type: "button",
+										style: {
+											padding: "8px 16px",
+											fontSize: 13,
+											fontWeight: activeTab === "config" ? 600 : 400,
+											color: activeTab === "config" ? "var(--dsw-alias-brand-primary, #0284c7)" : "var(--dsw-alias-label-secondary, #6b7280)",
+											background: "none",
+											border: "none",
+											borderBottom: activeTab === "config" ? "2px solid var(--dsw-alias-brand-primary, #0284c7)" : "2px solid transparent",
+											cursor: "pointer",
+											whiteSpace: "nowrap"
+										},
+										onClick: () => setActiveTab("config"),
+										children: `⚙️ ${t("tabConfig")}`
+									})
+								]
+							}),
+
+							// Tab 1: Real-time Quota View
+							activeTab === "quota" ? (0, react_jsx_runtime.jsxs)("div", {
+								style: { padding: "16px 20px 20px 20px" },
+								children: [
+									// Unconfigured State
+									!state.tokenConfigured ? (0, react_jsx_runtime.jsxs)("div", {
+										style: {
+											padding: "20px",
+											textAlign: "center",
+											background: "var(--dsw-alias-bg-layer-3, #f9fafb)",
+											borderRadius: 8,
+											border: "1px dashed var(--dsw-alias-border-l2, #d1d5db)"
+										},
+										children: [
+											(0, react_jsx_runtime.jsx)("p", {
+												style: { fontSize: 13, color: "var(--dsw-alias-label-secondary, #6b7280)", margin: "0 0 12px 0" },
+												children: t("quotaMissingToken")
+											}),
+											(0, react_jsx_runtime.jsx)("button", {
+												type: "button",
+												style: {
+													padding: "6px 16px",
+													borderRadius: 6,
+													border: "none",
+													background: "var(--dsw-alias-brand-primary, #0284c7)",
+													color: "#ffffff",
+													fontSize: 12,
+													fontWeight: 500,
+													cursor: "pointer"
+												},
+												onClick: () => setActiveTab("config"),
+												children: t("gotoConfig")
+											})
+										]
+									}) : null,
+
+									// Configured: Header Toolbar
+									state.tokenConfigured ? (0, react_jsx_runtime.jsxs)("div", {
+										style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 },
+										children: [
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
+												children: [
+													accountsData.accounts.length > 1 ? (0, react_jsx_runtime.jsxs)("div", {
+														style: { display: "flex", alignItems: "center", gap: 4 },
+														children: [
+															(0, react_jsx_runtime.jsx)("span", {
+																style: { fontSize: 11, color: "var(--dsw-alias-label-secondary, #6b7280)", fontWeight: 500 },
+																children: `👥 ${t("quickSwitchLabel")}:`
+															}),
+															(0, react_jsx_runtime.jsx)("select", {
+																style: {
+																	fontSize: 11,
+																	padding: "2px 6px",
+																	borderRadius: 4,
+																	border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+																	background: "var(--dsw-alias-bg-module-platform, #f3f4f6)",
+																	color: "var(--dsw-alias-label-primary, #111827)",
+																	cursor: "pointer",
+																	outline: "none"
+																},
+																value: accountsData.activeAccountId || "",
+																onChange: (e) => handleSwitchAccount(e.target.value),
+																disabled: switchingAccountId !== null,
+																children: accountsData.accounts.map(acc => (
+																	(0, react_jsx_runtime.jsx)("option", {
+																		value: acc.id,
+																		children: `${acc.name}${acc.email && !acc.name.includes(acc.email) ? ` (${acc.email})` : ""}${acc.active ? " ✓" : ""}`
+																	}, acc.id)
+																))
+															})
+														]
+													}) : null,
+													quotaData?.tier ? (0, react_jsx_runtime.jsxs)("span", {
+														style: { fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "var(--dsw-alias-bg-module-platform, #f3f4f6)", color: "var(--dsw-alias-label-primary, #111827)", fontWeight: 500 },
+														children: [`${t("quotaTier")}: `, quotaData.tier.paidTier || quotaData.tier.name]
+													}) : null,
+													quotaData?.tier?.project && quotaData.tier.project !== "default" ? (0, react_jsx_runtime.jsxs)("span", {
+														style: { fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "var(--dsw-alias-bg-module-platform, #f3f4f6)", color: "var(--dsw-alias-label-secondary, #6b7280)" },
+														children: [`${t("quotaProject")}: `, quotaData.tier.project]
+													}) : null,
+													(state.effectiveReportEndpoint && state.effectiveReportEnabled !== false) ? (0, react_jsx_runtime.jsx)("a", {
+														href: state.effectiveReportEndpoint.replace(/\/api\/report\/?$/, ""),
+														target: "_blank",
+														rel: "noopener noreferrer",
+														style: { fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "rgba(59, 130, 246, 0.12)", color: "#2563eb", textDecoration: "none", fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 4 },
+														children: `⚡ ${t("quotaRadarBadge")}`
+													}) : null
+												]
+											}),
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { display: "flex", alignItems: "center", gap: 10 },
+												children: [
+													quotaData?.updatedAt ? (0, react_jsx_runtime.jsxs)("span", {
+														style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary, #9ca3af)" },
+														children: [`${t("lastUpdated")} `, quotaData.updatedAt.slice(11, 19)]
+													}) : null,
+													(0, react_jsx_runtime.jsx)("button", {
+														type: "button",
+														style: {
+															display: "flex",
+															alignItems: "center",
+															gap: 4,
+															padding: "4px 10px",
+															borderRadius: 6,
+															border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+															background: "var(--dsw-alias-bg-layer-3, #ffffff)",
+															fontSize: 12,
+															color: "var(--dsw-alias-label-primary, #111827)",
+															cursor: loadingQuota ? "default" : "pointer"
+														},
+														disabled: loadingQuota,
+														onClick: () => fetchQuota(true),
+														children: loadingQuota ? t("refreshing") : `🔄 ${t("refreshQuota")}`
+													})
+												]
+											})
+										]
+									}) : null,
+
+									// Error Message
+									quotaError ? (0, react_jsx_runtime.jsxs)("div", {
+										style: { padding: "12px 16px", borderRadius: 8, background: "#fee2e2", color: "#dc2626", fontSize: 12, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" },
+										children: [
+											(0, react_jsx_runtime.jsx)("span", { children: `${t("quotaError")}: ${quotaError}` }),
+											(0, react_jsx_runtime.jsx)("button", {
+												type: "button",
+												style: { background: "none", border: "underline", color: "#dc2626", cursor: "pointer", fontSize: 12 },
+												onClick: () => fetchQuota(true),
+												children: t("retry")
+											})
+										]
+									}) : null,
+
+									// Quota Groups Cards
+									quotaData?.groups?.length ? (0, react_jsx_runtime.jsx)("div", {
+										style: { display: "flex", flexDirection: "column", gap: 12 },
+										children: quotaData.groups.map((group, gIdx) => (0, react_jsx_runtime.jsxs)("div", {
+											key: gIdx,
+											style: {
+												borderRadius: 8,
+												border: "1px solid var(--dsw-alias-border-l3, #e5e7eb)",
+												background: "var(--dsw-alias-bg-layer-3, #fafafa)",
+												padding: "12px 16px"
+											},
+											children: [
+												(0, react_jsx_runtime.jsxs)("div", {
+													style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
+													children: [
+														(0, react_jsx_runtime.jsx)("div", {
+															style: { fontSize: 13, fontWeight: 600, color: "var(--dsw-alias-label-primary, #111827)" },
+															children: group.displayName
+														}),
+														group.description ? (0, react_jsx_runtime.jsx)("div", {
+															style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary, #9ca3af)" },
+															children: group.description
+														}) : null
+													]
+												}),
+												(0, react_jsx_runtime.jsx)("div", {
+													style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
+													children: group.buckets?.map((bucket, bIdx) => {
+														const colors = getPercentColor(bucket.remainingPercent);
+														return (0, react_jsx_runtime.jsxs)("div", {
+															key: bIdx,
+															style: {
+																borderRadius: 6,
+																background: "#ffffff",
+																border: "1px solid var(--dsw-alias-border-l3, #f3f4f6)",
+																padding: "10px 12px"
+															},
+															children: [
+																(0, react_jsx_runtime.jsxs)("div", {
+																	style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 },
+																	children: [
+																		(0, react_jsx_runtime.jsx)("span", {
+																			style: { fontSize: 12, fontWeight: 500, color: "var(--dsw-alias-label-secondary, #4b5563)" },
+																			children: bucket.displayName
+																		}),
+																		(0, react_jsx_runtime.jsx)("span", {
+																			style: { fontSize: 11, fontWeight: 600, padding: "1px 6px", borderRadius: 4, background: colors.bg, color: colors.text },
+																			children: `${bucket.remainingPercent}% ${t("remaining")}`
+																		})
+																	]
+																}),
+																// Progress Bar
+																(0, react_jsx_runtime.jsx)("div", {
+																	style: {
+																		width: "100%",
+																		height: 6,
+																		borderRadius: 999,
+																		background: "#f3f4f6",
+																		overflow: "hidden",
+																		marginBottom: 6
+																	},
+																	children: (0, react_jsx_runtime.jsx)("div", {
+																		style: {
+																			width: `${Math.min(100, Math.max(0, bucket.remainingPercent))}%`,
+																			height: "100%",
+																			background: colors.bar,
+																			borderRadius: 999,
+																			transition: "width 0.3s"
+																		}
+																	})
+																}),
+																(0, react_jsx_runtime.jsxs)("div", {
+																	style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary, #9ca3af)", display: "flex", justifyContent: "space-between" },
+																	children: [
+																		(0, react_jsx_runtime.jsx)("span", {
+																			children: bucket.resetInSeconds > 0 ? `⏳ ${formatCountdown(bucket.resetInSeconds)}` : "已完全就绪"
+																		}),
+																		bucket.resetTime ? (0, react_jsx_runtime.jsx)("span", {
+																			title: bucket.resetTime,
+																			children: bucket.resetTime.slice(11, 16) + " UTC"
+																		}) : null
+																	]
+																})
+															]
+														});
+													})
+												})
+											]
+										}))
+									}) : null,
+
+									// Specific Models Overview Table
+									quotaData?.models?.length ? (0, react_jsx_runtime.jsxs)("div", {
+										style: { marginTop: 14 },
+										children: [
+											(0, react_jsx_runtime.jsx)("div", {
+												style: { fontSize: 12, fontWeight: 600, color: "var(--dsw-alias-label-secondary, #6b7280)", marginBottom: 6 },
+												children: t("modelsQuota")
+											}),
+											(0, react_jsx_runtime.jsx)("div", {
+												style: {
+													display: "grid",
+													gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+													gap: 6
+												},
+												children: quotaData.models.map((model, mIdx) => {
+													const colors = getPercentColor(model.remainingPercent ?? 100);
+													return (0, react_jsx_runtime.jsxs)("div", {
+														key: mIdx,
+														style: {
+															padding: "6px 10px",
+															borderRadius: 6,
+															background: "var(--dsw-alias-bg-layer-3, #fafafa)",
+															border: "1px solid var(--dsw-alias-border-l3, #f3f4f6)",
+															display: "flex",
+															justifyContent: "space-between",
+															alignItems: "center"
+														},
+														children: [
+															(0, react_jsx_runtime.jsx)("span", {
+																style: { fontSize: 12, color: "var(--dsw-alias-label-primary, #111827)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+																title: model.id,
+																children: model.displayName || model.id
+															}),
+															(0, react_jsx_runtime.jsx)("span", {
+																style: { fontSize: 11, fontWeight: 600, color: colors.text },
+																children: `${model.remainingPercent}%`
+															})
+														]
+													});
+												})
+											})
+										]
+									}) : null
+								]
+							}) : null,
+
+							// Tab 2: Accounts Management View
+							activeTab === "accounts" ? (0, react_jsx_runtime.jsxs)("div", {
+								style: { padding: "16px 20px 20px 20px" },
+								children: [
+									// Toast / Notice
+									accountSuccess ? (0, react_jsx_runtime.jsx)("div", {
+										style: { padding: "8px 12px", background: "#dcfce7", color: "#15803d", borderRadius: 6, fontSize: 12, marginBottom: 12, fontWeight: 500 },
+										children: accountSuccess
+									}) : null,
+									accountError ? (0, react_jsx_runtime.jsx)("div", {
+										style: { padding: "8px 12px", background: "#fee2e2", color: "#b91c1c", borderRadius: 6, fontSize: 12, marginBottom: 12, fontWeight: 500 },
+										children: accountError
+									}) : null,
+
+									// Section 1: Configured Accounts List
+									(0, react_jsx_runtime.jsxs)("div", {
+										style: { marginBottom: 20 },
+										children: [
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
+												children: [
+													(0, react_jsx_runtime.jsx)("div", {
+														style: { fontSize: 13, fontWeight: 600, color: "var(--dsw-alias-label-primary, #111827)" },
+														children: t("accountListTitle")
+													}),
+													(0, react_jsx_runtime.jsx)("button", {
+														type: "button",
+														style: { fontSize: 12, color: "var(--dsw-alias-brand-primary, #0284c7)", background: "none", border: "none", cursor: "pointer" },
+														onClick: () => fetchAccounts(),
+														children: loadingAccounts ? "刷新中…" : "🔄 刷新列表"
+													})
+												]
+											}),
+
+											accountsData.accounts.length === 0 ? (0, react_jsx_runtime.jsx)("div", {
+												style: { padding: "16px", textAlign: "center", background: "var(--dsw-alias-bg-layer-3, #f9fafb)", borderRadius: 8, color: "var(--dsw-alias-label-secondary, #6b7280)", fontSize: 12 },
+												children: t("noAccountsYet")
+											}) : (0, react_jsx_runtime.jsx)("div", {
+												style: { display: "flex", flexDirection: "column", gap: 8 },
+												children: accountsData.accounts.map(acc => {
+													const isEditing = editingAccountId === acc.id;
+													if (isEditing) {
+														return (0, react_jsx_runtime.jsxs)("div", {
+															key: acc.id,
+															style: {
+																padding: "14px 16px",
+																borderRadius: 8,
+																border: "1.5px solid var(--dsw-alias-brand-primary, #0284c7)",
+																background: "var(--dsw-alias-bg-module-platform, #f0f9ff)",
+																display: "flex",
+																flexDirection: "column",
+																gap: 12
+															},
+															children: [
+																(0, react_jsx_runtime.jsxs)("div", {
+																	style: { display: "flex", justifyContent: "space-between", alignItems: "center" },
+																	children: [
+																		(0, react_jsx_runtime.jsx)("span", {
+																			style: { fontSize: 13, fontWeight: 600, color: "var(--dsw-alias-label-primary, #111827)" },
+																			children: `✏️ ${t("editAccountTitle")}`
+																		}),
+																		(0, react_jsx_runtime.jsx)("button", {
+																			type: "button",
+																			style: { fontSize: 12, color: "var(--dsw-alias-label-secondary, #6b7280)", background: "none", border: "none", cursor: "pointer" },
+																			onClick: cancelEditAccount,
+																			children: "✕"
+																		})
+																	]
+																}),
+																(0, react_jsx_runtime.jsxs)("div", {
+																	children: [
+																		(0, react_jsx_runtime.jsx)("label", {
+																			style: { display: "block", fontSize: 11, fontWeight: 500, color: "var(--dsw-alias-label-primary, #374151)", marginBottom: 4 },
+																			children: t("accountNameLabel")
+																		}),
+																		(0, react_jsx_runtime.jsx)("input", {
+																			type: "text",
+																			value: editAccountName,
+																			onChange: (e) => setEditAccountName(e.target.value),
+																			placeholder: t("accountNamePlaceholder"),
+																			style: { width: "100%", padding: "6px 10px", fontSize: 12, borderRadius: 6, border: "1px solid var(--dsw-alias-border-l2, #d1d5db)", background: "var(--dsw-alias-bg-layer-2, #ffffff)", boxSizing: "border-box" }
+																		})
+																	]
+																}),
+																(0, react_jsx_runtime.jsxs)("div", {
+																	children: [
+																		(0, react_jsx_runtime.jsx)("label", {
+																			style: { display: "block", fontSize: 11, fontWeight: 500, color: "var(--dsw-alias-label-primary, #374151)", marginBottom: 4 },
+																			children: `${t("accountTokenLabel")} (${t("tokenPlaceholderSet")})`
+																		}),
+																		(0, react_jsx_runtime.jsx)("textarea", {
+																			rows: 2,
+																			value: editAccountToken,
+																			onChange: (e) => setEditAccountToken(e.target.value),
+																			placeholder: t("tokenPlaceholderSet"),
+																			style: { width: "100%", padding: "6px 10px", fontSize: 12, borderRadius: 6, border: "1px solid var(--dsw-alias-border-l2, #d1d5db)", background: "var(--dsw-alias-bg-layer-2, #ffffff)", fontFamily: "monospace", boxSizing: "border-box", resize: "vertical" }
+																		})
+																	]
+																}),
+																(0, react_jsx_runtime.jsxs)("div", {
+																	children: [
+																		(0, react_jsx_runtime.jsx)("label", {
+																			style: { display: "block", fontSize: 11, fontWeight: 500, color: "var(--dsw-alias-label-primary, #374151)", marginBottom: 4 },
+																			children: t("proxyLabel")
+																		}),
+																		(0, react_jsx_runtime.jsxs)("div", {
+																			style: { display: "flex", gap: 8, alignItems: "center" },
+																			children: [
+																				(0, react_jsx_runtime.jsx)("input", {
+																					type: "text",
+																					value: editAccountProxy,
+																					onChange: (e) => setEditAccountProxy(e.target.value),
+																					placeholder: t("proxyPlaceholder"),
+																					style: { flex: 1, padding: "6px 10px", fontSize: 12, borderRadius: 6, border: "1px solid var(--dsw-alias-border-l2, #d1d5db)", background: "var(--dsw-alias-bg-layer-2, #ffffff)", fontFamily: "monospace", boxSizing: "border-box" }
+																				}),
+																				(0, react_jsx_runtime.jsx)("button", {
+																					type: "button",
+																					style: {
+																						padding: "6px 12px",
+																						fontSize: 12,
+																						borderRadius: 6,
+																						border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+																						background: "var(--dsw-alias-bg-layer-2, #ffffff)",
+																						color: "var(--dsw-alias-brand-primary, #0284c7)",
+																						cursor: testingEditProxy ? "not-allowed" : "pointer",
+																						whiteSpace: "nowrap",
+																						fontWeight: 500
+																					},
+																					disabled: testingEditProxy,
+																					onClick: () => handleTestProxy(editAccountProxy, "edit"),
+																					children: testingEditProxy ? t("testingProxy") : `⚡ ${t("testProxyBtn")}`
+																				})
+																			]
+																		}),
+																		editProxyTestResult ? (0, react_jsx_runtime.jsx)("div", {
+																			style: { marginTop: 6, fontSize: 11, color: editProxyTestResult.ok ? "#16a34a" : "#dc2626", fontWeight: 500 },
+																			children: editProxyTestResult.msg
+																		}) : (0, react_jsx_runtime.jsx)("div", {
+																			style: { marginTop: 4, fontSize: 11, color: "var(--dsw-alias-label-secondary, #6b7280)" },
+																			children: t("proxyHint")
+																		})
+																	]
+																}),
+																(0, react_jsx_runtime.jsxs)("div", {
+																	style: { display: "flex", gap: 8, marginTop: 4 },
+																	children: [
+																		(0, react_jsx_runtime.jsx)("button", {
+																			type: "button",
+																			style: {
+																				padding: "6px 16px",
+																				fontSize: 12,
+																				fontWeight: 500,
+																				borderRadius: 6,
+																				border: "none",
+																				background: "var(--dsw-alias-brand-primary, #0284c7)",
+																				color: "#ffffff",
+																				cursor: savingEditAccount ? "not-allowed" : "pointer"
+																			},
+																			disabled: savingEditAccount,
+																			onClick: () => handleUpdateAccount(acc.id),
+																			children: savingEditAccount ? t("savingAccount") : `✓ ${t("saveAccountChanges")}`
+																		}),
+																		(0, react_jsx_runtime.jsx)("button", {
+																			type: "button",
+																			style: {
+																				padding: "6px 14px",
+																				fontSize: 12,
+																				borderRadius: 6,
+																				border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+																				background: "var(--dsw-alias-bg-layer-2, #ffffff)",
+																				color: "var(--dsw-alias-label-primary, #374151)",
+																				cursor: "pointer"
+																			},
+																			onClick: cancelEditAccount,
+																			children: t("cancelEdit")
+																		})
+																	]
+																})
+															]
+														});
+													}
+
+													return (0, react_jsx_runtime.jsxs)("div", {
+														key: acc.id,
+														style: {
+															display: "flex",
+															justifyContent: "space-between",
+															alignItems: "center",
+															padding: "12px 14px",
+															borderRadius: 8,
+															border: acc.active ? "1.5px solid var(--dsw-alias-brand-primary, #0284c7)" : "1px solid var(--dsw-alias-border-l2, #e5e7eb)",
+															background: acc.active ? "var(--dsw-alias-bg-module-platform, #f0f9ff)" : "var(--dsw-alias-bg-layer-3, #f9fafb)",
+															flexWrap: "wrap",
+															gap: 10
+														},
+														children: [
+															(0, react_jsx_runtime.jsxs)("div", {
+																style: { display: "flex", flexDirection: "column", gap: 4 },
+																children: [
+																	(0, react_jsx_runtime.jsxs)("div", {
+																		style: { display: "flex", alignItems: "center", gap: 8 },
+																		children: [
+																			(0, react_jsx_runtime.jsx)("span", {
+																				style: { fontSize: 13, fontWeight: 600, color: "var(--dsw-alias-label-primary, #111827)" },
+																				children: acc.name
+																			}),
+																			acc.active ? (0, react_jsx_runtime.jsx)("span", {
+																				style: { fontSize: 11, padding: "1px 6px", borderRadius: 4, background: "#dcfce7", color: "#16a34a", fontWeight: 500 },
+																				children: t("currentActiveBadge")
+																			}) : (0, react_jsx_runtime.jsx)("span", {
+																				style: { fontSize: 11, padding: "1px 6px", borderRadius: 4, background: "#f3f4f6", color: "#6b7280" },
+																				children: t("backupBadge")
+																			})
+																		]
+																	}),
+																	(0, react_jsx_runtime.jsxs)("div", {
+																		style: { display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--dsw-alias-label-secondary, #6b7280)", flexWrap: "wrap" },
+																		children: [
+																			acc.email ? (0, react_jsx_runtime.jsx)("span", { children: `📧 ${acc.email}` }) : null,
+																			acc.tier ? (0, react_jsx_runtime.jsx)("span", { children: `🎖️ ${acc.tier}` }) : null,
+																			acc.project ? (0, react_jsx_runtime.jsx)("span", { children: `📁 ${acc.project}` }) : null,
+																			acc.tokenMasked ? (0, react_jsx_runtime.jsx)("span", { style: { fontFamily: "monospace" }, children: `🔑 ${acc.tokenMasked}` }) : null
+																		]
+																	}),
+																	(0, react_jsx_runtime.jsxs)("div", {
+																		style: { display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: acc.hasProxy ? "var(--dsw-alias-brand-primary, #0284c7)" : "var(--dsw-alias-label-secondary, #6b7280)", marginTop: 2, flexWrap: "wrap" },
+																		children: [
+																			(0, react_jsx_runtime.jsx)("span", {
+																				style: { fontFamily: acc.hasProxy ? "monospace" : "inherit" },
+																				children: acc.hasProxy ? `🌐 ${acc.proxyMasked}` : `🌐 ${t("proxyDirect")}`
+																			}),
+																			acc.hasProxy ? (0, react_jsx_runtime.jsx)("button", {
+																				type: "button",
+																				style: {
+																					padding: "1px 6px",
+																					fontSize: 10,
+																					borderRadius: 4,
+																					border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+																					background: "var(--dsw-alias-bg-layer-2, #ffffff)",
+																					color: "var(--dsw-alias-brand-primary, #0284c7)",
+																					cursor: testingCardProxyId === acc.id ? "not-allowed" : "pointer"
+																				},
+																				disabled: testingCardProxyId === acc.id,
+																				onClick: () => handleTestProxy(acc.proxy, "card", acc.id),
+																				children: testingCardProxyId === acc.id ? t("testingProxy") : `⚡ ${t("testProxyBtn")}`
+																			}) : null,
+																			cardProxyTestResults[acc.id] ? (0, react_jsx_runtime.jsx)("span", {
+																				style: { fontSize: 10, color: cardProxyTestResults[acc.id].ok ? "#16a34a" : "#dc2626", fontWeight: 500 },
+																				children: cardProxyTestResults[acc.id].msg
+																			}) : null
+																		]
+																	})
+																]
+															}),
+															(0, react_jsx_runtime.jsxs)("div", {
+																style: { display: "flex", alignItems: "center", gap: 8 },
+																children: [
+																	!acc.active ? (0, react_jsx_runtime.jsx)("button", {
+																		type: "button",
+																		style: {
+																			padding: "5px 12px",
+																			fontSize: 12,
+																			borderRadius: 6,
+																			border: "none",
+																			background: "var(--dsw-alias-brand-primary, #0284c7)",
+																			color: "#ffffff",
+																			cursor: "pointer",
+																			fontWeight: 500
+																		},
+																		disabled: switchingAccountId === acc.id,
+																		onClick: () => handleSwitchAccount(acc.id),
+																		children: switchingAccountId === acc.id ? t("switching") : t("switchAccount")
+																	}) : null,
+																	(0, react_jsx_runtime.jsx)("button", {
+																		type: "button",
+																		style: {
+																			padding: "4px 8px",
+																			fontSize: 12,
+																			borderRadius: 6,
+																			border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+																			background: "var(--dsw-alias-bg-layer-2, #ffffff)",
+																			color: "var(--dsw-alias-label-primary, #374151)",
+																			cursor: "pointer"
+																		},
+																		title: t("editAccount"),
+																		onClick: () => startEditAccount(acc),
+																		children: "✏️"
+																	}),
+																	(0, react_jsx_runtime.jsx)("button", {
+																		type: "button",
+																		style: {
+																			padding: "4px 8px",
+																			fontSize: 12,
+																			borderRadius: 6,
+																			border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+																			background: "var(--dsw-alias-bg-layer-2, #ffffff)",
+																			color: "#dc2626",
+																			cursor: "pointer"
+																		},
+																		title: t("deleteAccount"),
+																		onClick: () => handleDeleteAccount(acc.id),
+																		children: "🗑️"
+																	})
+																]
+															})
+														]
+													});
+												})
+											})
+										]
+									}),
+
+									// Section 2: Add New Account Form
+									(0, react_jsx_runtime.jsxs)("div", {
+										style: {
+											padding: "16px",
+											borderRadius: 8,
+											background: "var(--dsw-alias-bg-layer-3, #f9fafb)",
+											border: "1px solid var(--dsw-alias-border-l2, #e5e7eb)"
+										},
+										children: [
+											(0, react_jsx_runtime.jsx)("div", {
+												style: { fontSize: 13, fontWeight: 600, color: "var(--dsw-alias-label-primary, #111827)", marginBottom: 12 },
+												children: `➕ ${t("addAccount")}`
+											}),
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { display: "flex", flexDirection: "column", gap: 10 },
+												children: [
+													(0, react_jsx_runtime.jsxs)("div", {
+														children: [
+															(0, react_jsx_runtime.jsx)("label", {
+																style: { display: "block", fontSize: 12, fontWeight: 500, color: "var(--dsw-alias-label-primary, #374151)", marginBottom: 4 },
+																children: t("accountNameLabel")
+															}),
+															(0, react_jsx_runtime.jsx)("input", {
+																type: "text",
+																value: newAccountName,
+																onChange: (e) => setNewAccountName(e.target.value),
+																placeholder: t("accountNamePlaceholder"),
+																style: {
+																	width: "100%",
+																	padding: "8px 10px",
+																	fontSize: 12,
+																	borderRadius: 6,
+																	border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+																	background: "var(--dsw-alias-bg-layer-2, #ffffff)",
+																	color: "var(--dsw-alias-label-primary, #111827)",
+																	boxSizing: "border-box"
+																}
+															})
+														]
+													}),
+													(0, react_jsx_runtime.jsxs)("div", {
+														children: [
+															(0, react_jsx_runtime.jsx)("label", {
+																style: { display: "block", fontSize: 12, fontWeight: 500, color: "var(--dsw-alias-label-primary, #374151)", marginBottom: 4 },
+																children: `${t("accountTokenLabel")} *`
+															}),
+															(0, react_jsx_runtime.jsx)("textarea", {
+																rows: 2,
+																value: newAccountToken,
+																onChange: (e) => setNewAccountToken(e.target.value),
+																placeholder: t("accountTokenPlaceholder"),
+																style: {
+																	width: "100%",
+																	padding: "8px 10px",
+																	fontSize: 12,
+																	borderRadius: 6,
+																	border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+																	background: "var(--dsw-alias-bg-layer-2, #ffffff)",
+																	color: "var(--dsw-alias-label-primary, #111827)",
+																	fontFamily: "monospace",
+																	boxSizing: "border-box",
+																	resize: "vertical"
+																}
+															})
+														]
+													}),
+													(0, react_jsx_runtime.jsxs)("div", {
+														children: [
+															(0, react_jsx_runtime.jsx)("label", {
+																style: { display: "block", fontSize: 12, fontWeight: 500, color: "var(--dsw-alias-label-primary, #374151)", marginBottom: 4 },
+																children: t("proxyLabel")
+															}),
+															(0, react_jsx_runtime.jsxs)("div", {
+																style: { display: "flex", gap: 8, alignItems: "center" },
+																children: [
+																	(0, react_jsx_runtime.jsx)("input", {
+																		type: "text",
+																		value: newAccountProxy,
+																		onChange: (e) => setNewAccountProxy(e.target.value),
+																		placeholder: t("proxyPlaceholder"),
+																		style: {
+																			flex: 1,
+																			padding: "8px 10px",
+																			fontSize: 12,
+																			borderRadius: 6,
+																			border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+																			background: "var(--dsw-alias-bg-layer-2, #ffffff)",
+																			color: "var(--dsw-alias-label-primary, #111827)",
+																			fontFamily: "monospace",
+																			boxSizing: "border-box"
+																		}
+																	}),
+																	(0, react_jsx_runtime.jsx)("button", {
+																		type: "button",
+																		style: {
+																			padding: "8px 14px",
+																			fontSize: 12,
+																			borderRadius: 6,
+																			border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+																			background: "var(--dsw-alias-bg-layer-2, #ffffff)",
+																			color: "var(--dsw-alias-brand-primary, #0284c7)",
+																			cursor: testingProxy ? "not-allowed" : "pointer",
+																			whiteSpace: "nowrap",
+																			fontWeight: 500
+																		},
+																		disabled: testingProxy,
+																		onClick: () => handleTestProxy(newAccountProxy, "new"),
+																		children: testingProxy ? t("testingProxy") : `⚡ ${t("testProxyBtn")}`
+																	})
+																]
+															}),
+															proxyTestResult ? (0, react_jsx_runtime.jsx)("div", {
+																style: { marginTop: 6, fontSize: 11, color: proxyTestResult.ok ? "#16a34a" : "#dc2626", fontWeight: 500 },
+																children: proxyTestResult.msg
+															}) : (0, react_jsx_runtime.jsx)("div", {
+																style: { marginTop: 4, fontSize: 11, color: "var(--dsw-alias-label-secondary, #6b7280)" },
+																children: t("proxyHint")
+															})
+														]
+													}),
+													(0, react_jsx_runtime.jsx)("button", {
+														type: "button",
+														style: {
+															alignSelf: "flex-start",
+															padding: "8px 18px",
+															fontSize: 12,
+															fontWeight: 500,
+															borderRadius: 6,
+															border: "none",
+															background: "var(--dsw-alias-brand-primary, #0284c7)",
+															color: "#ffffff",
+															cursor: addingAccount ? "not-allowed" : "pointer",
+															opacity: addingAccount ? 0.7 : 1
+														},
+														disabled: addingAccount,
+														onClick: handleAddAccount,
+														children: addingAccount ? t("addingAccount") : `✓ ${t("addAccount")}`
+													})
+												]
+											})
+										]
+									})
+								]
+							}) : null,
+
+							// Tab 3: Usage Statistics View
+							activeTab === "usage" ? (0, react_jsx_runtime.jsxs)("div", {
+								style: { padding: "16px 20px 20px 20px" },
+								children: [
+									// Toolbar
+									(0, react_jsx_runtime.jsxs)("div", {
+										style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
+										children: [
+											(0, react_jsx_runtime.jsx)("div", {
+												style: { fontSize: 13, fontWeight: 600, color: "var(--dsw-alias-label-primary, #111827)" },
+												children: t("usageSummary")
+											}),
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
+												children: [
+													accountsData.accounts && accountsData.accounts.length > 1 ? (0, react_jsx_runtime.jsxs)("select", {
+														style: {
+															height: 28,
+															fontSize: 12,
+															borderRadius: 6,
+															border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+															background: "var(--dsw-alias-bg-layer-3, #ffffff)",
+															color: "var(--dsw-alias-label-primary, #111827)",
+															padding: "0 6px",
+															cursor: "pointer",
+															maxWidth: 160
+														},
+														value: selectedUsageAccount,
+														onChange: (e) => {
+															const val = e.target.value;
+															setSelectedUsageAccount(val);
+															fetchUsage(val);
+														},
+														children: [
+															(0, react_jsx_runtime.jsx)("option", { value: "all", children: `👥 ${t("accountFilterAll")}` }),
+															...accountsData.accounts.map(acc => (0, react_jsx_runtime.jsx)("option", {
+																value: acc.id,
+																children: `${acc.name || acc.email || acc.id}${acc.id === accountsData.activeAccountId ? ` (${t("currentActiveTag")})` : ""}`
+															}, acc.id))
+														]
+													}) : null,
+													(0, react_jsx_runtime.jsx)("button", {
+														type: "button",
+														style: {
+															padding: "4px 10px",
+															borderRadius: 6,
+															border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+															background: "var(--dsw-alias-bg-layer-3, #ffffff)",
+															fontSize: 12,
+															color: "var(--dsw-alias-label-primary, #111827)",
+															cursor: loadingUsage ? "default" : "pointer"
+														},
+														disabled: loadingUsage,
+														onClick: () => fetchUsage(selectedUsageAccount),
+														children: loadingUsage ? t("refreshing") : `🔄 ${t("refreshQuota")}`
+													}),
+													(0, react_jsx_runtime.jsx)("button", {
+														type: "button",
+														style: {
+															padding: "4px 10px",
+															borderRadius: 6,
+															border: "1px solid #fecaca",
+															background: "#fee2e2",
+															fontSize: 12,
+															color: "#dc2626",
+															cursor: clearingUsage ? "default" : "pointer"
+														},
+														disabled: clearingUsage,
+														onClick: handleClearUsage,
+														children: clearingUsage ? t("clearing") : t("clearUsage")
+													})
+												]
+											})
+										]
+									}),
+
+									// KPI Summary Grid
+									(0, react_jsx_runtime.jsxs)("div", {
+										style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginBottom: 16 },
+										children: [
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { padding: "10px", borderRadius: 8, background: "var(--dsw-alias-bg-layer-3, #fafafa)", border: "1px solid var(--dsw-alias-border-l3, #f3f4f6)", textAlign: "center" },
+												children: [
+													(0, react_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary, #9ca3af)", marginBottom: 4 }, children: t("totalRequests") }),
+													(0, react_jsx_runtime.jsx)("div", { style: { fontSize: 16, fontWeight: 700, color: "var(--dsw-alias-label-primary, #111827)" }, children: usageData?.summary?.totalRequests ?? 0 })
+												]
+											}),
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { padding: "10px", borderRadius: 8, background: "var(--dsw-alias-bg-layer-3, #fafafa)", border: "1px solid var(--dsw-alias-border-l3, #f3f4f6)", textAlign: "center" },
+												children: [
+													(0, react_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary, #9ca3af)", marginBottom: 4 }, children: t("totalInput") }),
+													(0, react_jsx_runtime.jsx)("div", { style: { fontSize: 16, fontWeight: 700, color: "var(--dsw-alias-label-primary, #111827)" }, children: formatTokens(usageData?.summary?.totalInputTokens) })
+												]
+											}),
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { padding: "10px", borderRadius: 8, background: "var(--dsw-alias-bg-layer-3, #fafafa)", border: "1px solid var(--dsw-alias-border-l3, #f3f4f6)", textAlign: "center" },
+												children: [
+													(0, react_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary, #9ca3af)", marginBottom: 4 }, children: t("totalOutput") }),
+													(0, react_jsx_runtime.jsx)("div", { style: { fontSize: 16, fontWeight: 700, color: "var(--dsw-alias-label-primary, #111827)" }, children: formatTokens(usageData?.summary?.totalOutputTokens) })
+												]
+											}),
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { padding: "10px", borderRadius: 8, background: "#ecfdf5", border: "1px solid #a7f3d0", textAlign: "center" },
+												children: [
+													(0, react_jsx_runtime.jsxs)("div", { style: { fontSize: 11, color: "#047857", marginBottom: 4, display: "flex", justifyContent: "center", gap: 4 }, children: [
+														(0, react_jsx_runtime.jsx)("span", { children: "⚡" }),
+														(0, react_jsx_runtime.jsx)("span", { children: t("totalCacheRead") })
+													] }),
+													(0, react_jsx_runtime.jsx)("div", { style: { fontSize: 16, fontWeight: 700, color: "#065f46" }, children: formatTokens(usageData?.summary?.totalCacheReadTokens) }),
+													usageData?.summary?.cacheSavingsRate ? (0, react_jsx_runtime.jsx)("div", { style: { fontSize: 10, color: "#059669", marginTop: 2 }, children: `${t("cacheSavings")}: ${usageData.summary.cacheSavingsRate}` }) : null
+												]
+											}),
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { padding: "10px", borderRadius: 8, background: "var(--dsw-alias-bg-layer-3, #fafafa)", border: "1px solid var(--dsw-alias-border-l3, #f3f4f6)", textAlign: "center" },
+												children: [
+													(0, react_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary, #9ca3af)", marginBottom: 4 }, children: t("totalReasoning") }),
+													(0, react_jsx_runtime.jsx)("div", { style: { fontSize: 16, fontWeight: 700, color: "var(--dsw-alias-label-primary, #111827)" }, children: formatTokens(usageData?.summary?.totalReasoningTokens) })
+												]
+											})
+										]
+									}),
+
+									// Model Breakdown Table
+									usageData?.byModel && Object.keys(usageData.byModel).length > 0 ? (0, react_jsx_runtime.jsxs)("div", {
+										style: { marginBottom: 16 },
+										children: [
+											(0, react_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 600, color: "var(--dsw-alias-label-secondary, #6b7280)", marginBottom: 8 }, children: t("modelBreakdown") }),
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { overflowX: "auto" },
+												children: [
+													(0, react_jsx_runtime.jsxs)("table", {
+														style: { width: "100%", borderCollapse: "collapse", fontSize: 12, textAlign: "left" },
+														children: [
+															(0, react_jsx_runtime.jsx)("thead", {
+																children: (0, react_jsx_runtime.jsxs)("tr", {
+																	style: { borderBottom: "1px solid var(--dsw-alias-border-l2, #e5e7eb)", color: "var(--dsw-alias-label-tertiary, #9ca3af)" },
+																	children: [
+																		(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px" }, children: t("modelCol") }),
+																		(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "right" }, children: t("totalRequests") }),
+																		(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "right" }, children: t("totalInput") }),
+																		(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "right" }, children: t("totalOutput") }),
+																		(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "right" }, children: t("totalCacheRead") }),
+																		(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "right" }, children: t("totalReasoning") })
+																	]
+																})
+															}),
+															(0, react_jsx_runtime.jsx)("tbody", {
+																children: Object.entries(usageData.byModel).map(([mName, mStats], idx) => (0, react_jsx_runtime.jsxs)("tr", {
+																	key: idx,
+																	style: { borderBottom: "1px solid var(--dsw-alias-border-l3, #f3f4f6)" },
+																	children: [
+																		(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px", fontWeight: 500, color: "var(--dsw-alias-label-primary, #111827)" }, children: mName }),
+																		(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px", textAlign: "right" }, children: mStats.requests }),
+																		(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px", textAlign: "right" }, children: formatTokens(mStats.inputTokens) }),
+																		(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px", textAlign: "right" }, children: formatTokens(mStats.outputTokens) }),
+																		(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px", textAlign: "right", color: "#059669", fontWeight: 500 }, children: formatTokens(mStats.cacheReadTokens) }),
+																		(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px", textAlign: "right" }, children: formatTokens(mStats.reasoningTokens) })
+																	]
+																}))
+															})
+														]
+													})
+												]
+											})
+										]
+									}) : null,
+
+									// Recent Requests Stream
+									usageData?.recent?.length ? (0, react_jsx_runtime.jsxs)("div", {
+										children: [
+											(0, react_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 600, color: "var(--dsw-alias-label-secondary, #6b7280)", marginBottom: 8 }, children: t("recentRequests") }),
+											(0, react_jsx_runtime.jsx)("div", {
+												style: { display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto" },
+												children: usageData.recent.map((rec, rIdx) => (0, react_jsx_runtime.jsxs)("div", {
+													key: rIdx,
+													style: {
+														display: "flex",
+														justifyContent: "space-between",
+														alignItems: "center",
+														padding: "6px 10px",
+														borderRadius: 6,
+														background: "var(--dsw-alias-bg-layer-3, #fafafa)",
+														border: "1px solid var(--dsw-alias-border-l3, #f3f4f6)",
+														fontSize: 11
+													},
+													children: [
+														(0, react_jsx_runtime.jsxs)("div", {
+															style: { display: "flex", alignItems: "center", gap: 8 },
+															children: [
+																(0, react_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-label-tertiary, #9ca3af)" }, children: formatTimeAgo(rec.timestamp) }),
+																(accountsData.accounts && accountsData.accounts.length > 1) ? (0, react_jsx_runtime.jsx)("span", {
+																	style: {
+																		padding: "1px 6px",
+																		borderRadius: 4,
+																		background: "var(--dsw-alias-bg-module-platform, #e0f2fe)",
+																		color: "#0369a1",
+																		fontSize: 10,
+																		fontWeight: 500
+																	},
+																	children: rec.accountName || rec.accountEmail || t("unassignedAccount")
+																}) : null,
+																(0, react_jsx_runtime.jsx)("span", { style: { fontWeight: 500, color: "var(--dsw-alias-label-primary, #111827)" }, children: rec.model }),
+																rec.durationMs ? (0, react_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-label-tertiary, #9ca3af)" }, children: `(${formatDuration(rec.durationMs)})` }) : null
+															]
+														}),
+														(0, react_jsx_runtime.jsxs)("div", {
+															style: { display: "flex", alignItems: "center", gap: 10 },
+															children: [
+																(0, react_jsx_runtime.jsxs)("span", { style: { color: "var(--dsw-alias-label-secondary, #4b5563)" }, children: [
+																	`↑${formatTokens(rec.inputTokens)} `,
+																	`↓${formatTokens(rec.outputTokens)}`,
+																	rec.reasoningTokens > 0 ? ` 💭${formatTokens(rec.reasoningTokens)}` : ""
+																] }),
+																rec.cacheReadTokens > 0 ? (0, react_jsx_runtime.jsx)("span", {
+																	style: { padding: "1px 5px", borderRadius: 4, background: "#dcfce7", color: "#16a34a", fontWeight: 500 },
+																	children: `⚡ ${rec.cacheSavingsRatio}%`
+																}) : null
+															]
+														})
+													]
+												}))
+											})
+										]
+									}) : (0, react_jsx_runtime.jsx)("p", {
+										style: { fontSize: 12, color: "var(--dsw-alias-label-tertiary, #9ca3af)", textAlign: "center", margin: "20px 0" },
+										children: t("noUsageData")
+									})
+								]
+							}) : null,
+
+							// Tab 3: Quota Estimation & Valuation View
+							activeTab === "valuation" ? (0, react_jsx_runtime.jsxs)("div", {
+								style: { padding: "16px 20px 20px 20px" },
+								children: [
+									// Valuation Toolbar (Period Toggle + Group Selector + Actions)
+									(0, react_jsx_runtime.jsxs)("div", {
+										style: { display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 14 },
+										children: [
+											// Period Selector Pills
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { display: "flex", background: "var(--dsw-alias-bg-module-platform, #f3f4f6)", padding: "3px", borderRadius: 8, gap: 2 },
+												children: [
+													(0, react_jsx_runtime.jsx)("button", {
+														type: "button",
+														style: {
+															padding: "4px 12px",
+															borderRadius: 6,
+															border: "none",
+															fontSize: 12,
+															fontWeight: activeValuationPeriod === "5h" ? 600 : 400,
+															background: activeValuationPeriod === "5h" ? "var(--dsw-alias-bg-layer-3, #ffffff)" : "none",
+															color: activeValuationPeriod === "5h" ? "var(--dsw-alias-brand-primary, #0284c7)" : "var(--dsw-alias-label-secondary, #6b7280)",
+															boxShadow: activeValuationPeriod === "5h" ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+															cursor: "pointer"
+														},
+														onClick: () => setActiveValuationPeriod("5h"),
+														children: `⏱️ ${t("period5h")}`
+													}),
+													(0, react_jsx_runtime.jsx)("button", {
+														type: "button",
+														style: {
+															padding: "4px 12px",
+															borderRadius: 6,
+															border: "none",
+															fontSize: 12,
+															fontWeight: activeValuationPeriod === "weekly" ? 600 : 400,
+															background: activeValuationPeriod === "weekly" ? "var(--dsw-alias-bg-layer-3, #ffffff)" : "none",
+															color: activeValuationPeriod === "weekly" ? "var(--dsw-alias-brand-primary, #0284c7)" : "var(--dsw-alias-label-secondary, #6b7280)",
+															boxShadow: activeValuationPeriod === "weekly" ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+															cursor: "pointer"
+														},
+														onClick: () => setActiveValuationPeriod("weekly"),
+														children: `📅 ${t("periodWeekly")}`
+													}),
+													(0, react_jsx_runtime.jsx)("button", {
+														type: "button",
+														style: {
+															padding: "4px 12px",
+															borderRadius: 6,
+															border: "none",
+															fontSize: 12,
+															fontWeight: activeValuationPeriod === "all" ? 600 : 400,
+															background: activeValuationPeriod === "all" ? "var(--dsw-alias-bg-layer-3, #ffffff)" : "none",
+															color: activeValuationPeriod === "all" ? "var(--dsw-alias-brand-primary, #0284c7)" : "var(--dsw-alias-label-secondary, #6b7280)",
+															boxShadow: activeValuationPeriod === "all" ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+															cursor: "pointer"
+														},
+														onClick: () => setActiveValuationPeriod("all"),
+														children: `🌐 ${t("periodAll")}`
+													})
+												]
+											}),
+
+											// Group Filter & Actions
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
+												children: [
+													accountsData.accounts && accountsData.accounts.length > 1 ? (0, react_jsx_runtime.jsxs)("select", {
+														style: {
+															height: 28,
+															fontSize: 12,
+															borderRadius: 6,
+															border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+															background: "var(--dsw-alias-bg-layer-3, #ffffff)",
+															color: "var(--dsw-alias-label-primary, #111827)",
+															padding: "0 6px",
+															cursor: "pointer",
+															maxWidth: 160
+														},
+														value: selectedValuationAccount,
+														onChange: (e) => setSelectedValuationAccount(e.target.value),
+														children: [
+															(0, react_jsx_runtime.jsx)("option", { value: "all", children: `👥 ${t("accountFilterAll")}` }),
+															...accountsData.accounts.map(acc => (0, react_jsx_runtime.jsx)("option", {
+																value: acc.id,
+																children: `${acc.name || acc.email || acc.id}${acc.id === accountsData.activeAccountId ? ` (${t("currentActiveTag")})` : ""}`
+															}, acc.id))
+														]
+													}) : null,
+													(0, react_jsx_runtime.jsxs)("select", {
+														style: {
+															height: 28,
+															fontSize: 12,
+															borderRadius: 6,
+															border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+															background: "var(--dsw-alias-bg-layer-3, #ffffff)",
+															color: "var(--dsw-alias-label-primary, #111827)",
+															padding: "0 6px",
+															cursor: "pointer"
+														},
+														value: selectedGroupFilter,
+														onChange: (e) => setSelectedGroupFilter(e.target.value),
+														children: [
+															(0, react_jsx_runtime.jsx)("option", { value: "all", children: t("groupAll") }),
+															(0, react_jsx_runtime.jsx)("option", { value: "gemini", children: t("groupGemini") }),
+															(0, react_jsx_runtime.jsx)("option", { value: "3p", children: t("group3p") })
+														]
+													}),
+													(0, react_jsx_runtime.jsx)("button", {
+														type: "button",
+														style: {
+															padding: "4px 8px",
+															borderRadius: 6,
+															border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+															background: "var(--dsw-alias-bg-layer-3, #ffffff)",
+															fontSize: 11,
+															color: "var(--dsw-alias-label-secondary, #4b5563)",
+															cursor: "pointer"
+														},
+														title: t("setBaselineBtn"),
+														onClick: () => {
+															if (targetBucket && targetBucket.bucketId) {
+																handleSetCurrentAsBaseline(targetBucket.bucketId, targetBucket.remainingFraction, targetBucket.resetTime);
+															}
+														},
+														children: `📍 ${t("setBaselineBtn")}`
+													}),
+													(0, react_jsx_runtime.jsx)("button", {
+														type: "button",
+														style: {
+															padding: "4px 10px",
+															borderRadius: 6,
+															border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+															background: "var(--dsw-alias-bg-layer-3, #ffffff)",
+															fontSize: 12,
+															color: "var(--dsw-alias-label-primary, #111827)",
+															cursor: (loadingQuota || loadingUsage) ? "default" : "pointer"
+														},
+														disabled: loadingQuota || loadingUsage,
+														onClick: () => { fetchQuota(true); fetchUsage(); },
+														children: (loadingQuota || loadingUsage) ? t("refreshing") : `🔄 ${t("refreshQuota")}`
+													})
+												]
+											})
+										]
+									}),
+
+									// Period Window & Notice Banner
+									(0, react_jsx_runtime.jsxs)("div", {
+										style: {
+											padding: "10px 14px",
+											borderRadius: 8,
+											background: "var(--dsw-alias-bg-layer-3, #fafafa)",
+											border: "1px solid var(--dsw-alias-border-l3, #f3f4f6)",
+											marginBottom: 14,
+											display: "flex",
+											flexDirection: "column",
+											gap: 6
+										},
+										children: [
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, flexWrap: "wrap", gap: 6 },
+												children: [
+													(0, react_jsx_runtime.jsxs)("div", {
+														style: { display: "flex", alignItems: "center", gap: 6 },
+														children: [
+															(0, react_jsx_runtime.jsx)("span", { style: { fontWeight: 600, color: "var(--dsw-alias-label-primary, #111827)" }, children: `🕒 ${t("windowRangeLabel")}:` }),
+															(0, react_jsx_runtime.jsx)("span", {
+																style: { color: "var(--dsw-alias-label-secondary, #4b5563)", fontFamily: "monospace" },
+																children: `${new Date(windowStartMs).toLocaleTimeString()} ~ ${new Date(windowEndMs).toLocaleTimeString()} (${activeValuationPeriod === "5h" ? t("windowNotice5h") : (activeValuationPeriod === "weekly" ? t("windowNoticeWeekly") : t("windowNoticeAll"))})`
+															})
+														]
+													}),
+													bucketResetTime && activeValuationPeriod !== "all" ? (0, react_jsx_runtime.jsxs)("div", {
+														style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary, #9ca3af)", display: "flex", alignItems: "center", gap: 6 },
+														children: [
+															(0, react_jsx_runtime.jsx)("span", { children: `⏳ ${t("resetsIn")}: ${formatCountdown(bucketResetInSeconds)}` }),
+															(0, react_jsx_runtime.jsx)("span", { children: `(${bucketResetTime.slice(11, 16)} UTC)` })
+														]
+													}) : null
+												]
+											}),
+											// Progress bar for quota remaining in selected period
+											remainingPct !== null && activeValuationPeriod !== "all" ? (0, react_jsx_runtime.jsxs)("div", {
+												children: [
+													(0, react_jsx_runtime.jsxs)("div", {
+														style: { display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 },
+														children: [
+															(0, react_jsx_runtime.jsxs)("span", { style: { color: "var(--dsw-alias-label-secondary, #6b7280)" }, children: [`${t("quotaConsumedPct")}: `, (0, react_jsx_runtime.jsx)("b", { style: { color: "#dc2626" }, children: `${usedPct}%` })] }),
+															(0, react_jsx_runtime.jsxs)("span", { style: { color: "var(--dsw-alias-label-secondary, #6b7280)" }, children: [`${t("quotaRemainingPct")}: `, (0, react_jsx_runtime.jsx)("b", { style: { color: "#16a34a" }, children: `${remainingPct}%` })] })
+														]
+													}),
+													(0, react_jsx_runtime.jsx)("div", {
+														style: { width: "100%", height: 6, borderRadius: 999, background: "#f3f4f6", overflow: "hidden" },
+														children: (0, react_jsx_runtime.jsx)("div", {
+															style: {
+																width: `${Math.min(100, Math.max(0, remainingPct))}%`,
+																height: "100%",
+																background: getPercentColor(remainingPct).bar,
+																borderRadius: 999,
+																transition: "width 0.3s"
+															}
+														})
+													})
+												]
+											}) : null
+										]
+									}),
+
+									// Valuation KPI Cards Grid
+									(0, react_jsx_runtime.jsxs)("div", {
+										style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 16 },
+										children: [
+											// Card 1: Consumed Cost in Period
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: {
+													padding: "12px",
+													borderRadius: 8,
+													background: "var(--dsw-alias-bg-layer-3, #fafafa)",
+													border: "1px solid var(--dsw-alias-border-l3, #f3f4f6)",
+													display: "flex",
+													flexDirection: "column",
+													justifyContent: "space-between"
+												},
+												children: [
+													(0, react_jsx_runtime.jsx)("div", {
+														style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary, #9ca3af)", marginBottom: 4 },
+														children: t("usedCostTitle")
+													}),
+													(0, react_jsx_runtime.jsx)("div", {
+														style: { fontSize: 18, fontWeight: 700, color: "var(--dsw-alias-label-primary, #111827)", marginBottom: 4 },
+														children: formatCurrency(totalPeriodUsdCost)
+													}),
+													(0, react_jsx_runtime.jsxs)("div", {
+														style: { fontSize: 10, color: "var(--dsw-alias-label-secondary, #6b7280)" },
+														children: [`↑${formatTokens(totalPeriodInputTokens)}  ↓${formatTokens(totalPeriodOutputTokens + totalPeriodReasoningTokens)}  ⚡${formatTokens(totalPeriodCacheReadTokens)}`]
+													})
+												]
+											}),
+
+											// Card 2: Quota Consumed Ratio
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: {
+													padding: "12px",
+													borderRadius: 8,
+													background: "var(--dsw-alias-bg-layer-3, #fafafa)",
+													border: "1px solid var(--dsw-alias-border-l3, #f3f4f6)",
+													display: "flex",
+													flexDirection: "column",
+													justifyContent: "space-between"
+												},
+												children: [
+													(0, react_jsx_runtime.jsx)("div", {
+														style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary, #9ca3af)", marginBottom: 4 },
+														children: activeValuationPeriod === "all" ? t("totalRequests") : (isDeltaMode ? `Δ ${t("quotaConsumedPct")}` : t("quotaConsumedPct"))
+													}),
+													(0, react_jsx_runtime.jsx)("div", {
+														style: { fontSize: 18, fontWeight: 700, color: activeValuationPeriod === "all" ? "var(--dsw-alias-label-primary, #111827)" : (usedPct && usedPct > 80 ? "#dc2626" : "var(--dsw-alias-label-primary, #111827)"), marginBottom: 4 },
+														children: activeValuationPeriod === "all" ? `${usageData?.summary?.totalRequests || 0} 次` : (isDeltaMode ? `Δ${deltaUsedPct}%` : (usedPct !== null ? `${usedPct}%` : "—"))
+													}),
+													(0, react_jsx_runtime.jsx)("div", {
+														style: { fontSize: 10, color: "var(--dsw-alias-label-secondary, #6b7280)" },
+														children: activeValuationPeriod === "all" ? `${formatTokens(usageData?.summary?.totalTokens || 0)} Total Tokens` : (isDeltaMode ? `基准: ${(baselineFraction*100).toFixed(1)}% → 当前: ${remainingPct}%` : (remainingPct !== null ? `${t("remaining")}: ${remainingPct}%` : "—"))
+													})
+												]
+											}),
+
+											// Card 3: Est. Total Quota Value
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: {
+													padding: "12px",
+													borderRadius: 8,
+													background: isDeltaMode ? "#fdf4ff" : "#eff6ff",
+													border: isDeltaMode ? "1px solid #f0abfc" : "1px solid #bfdbfe",
+													display: "flex",
+													flexDirection: "column",
+													justifyContent: "space-between"
+												},
+												children: [
+													(0, react_jsx_runtime.jsxs)("div", {
+														style: { fontSize: 11, color: isDeltaMode ? "#86198f" : "#1e40af", marginBottom: 4, display: "flex", alignItems: "center", justifyContent: "space-between" },
+														children: [
+															(0, react_jsx_runtime.jsxs)("div", {
+																style: { display: "flex", alignItems: "center", gap: 4 },
+																children: [
+																	(0, react_jsx_runtime.jsx)("span", { children: "🔮" }),
+																	(0, react_jsx_runtime.jsx)("span", { style: { fontWeight: 600 }, children: t("estTotalQuotaTitle") })
+																]
+															}),
+															isDeltaMode ? (0, react_jsx_runtime.jsx)("span", {
+																style: { fontSize: 9, padding: "1px 5px", borderRadius: 4, background: "#fae8ff", color: "#a21caf", fontWeight: 600 },
+																children: t("deltaModeBadge")
+															}) : null
+														]
+													}),
+													(0, react_jsx_runtime.jsx)("div", {
+														style: { fontSize: 18, fontWeight: 700, color: isDeltaMode ? "#701a75" : "#1d4ed8", marginBottom: 4 },
+														children: estTotalQuotaUsd !== null ? formatCurrency(estTotalQuotaUsd) : (usedPct === 0 ? "100% 完整" : "待推算")
+													}),
+													(0, react_jsx_runtime.jsx)("div", {
+														style: { fontSize: 10, color: isDeltaMode ? "#a21caf" : "#3b82f6" },
+														children: isDeltaMode ? `${t("deltaModeHint")} (Δ${deltaUsedPct}%)` : t("estFormulaHint")
+													})
+												]
+											}),
+
+											// Card 4: Est. Remaining Value
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: {
+													padding: "12px",
+													borderRadius: 8,
+													background: "#ecfdf5",
+													border: "1px solid #a7f3d0",
+													display: "flex",
+													flexDirection: "column",
+													justifyContent: "space-between"
+												},
+												children: [
+													(0, react_jsx_runtime.jsxs)("div", {
+														style: { fontSize: 11, color: "#065f46", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 },
+														children: [
+															(0, react_jsx_runtime.jsx)("span", { children: "🛡️" }),
+															(0, react_jsx_runtime.jsx)("span", { style: { fontWeight: 600 }, children: t("estRemainingQuotaTitle") })
+														]
+													}),
+													(0, react_jsx_runtime.jsx)("div", {
+														style: { fontSize: 18, fontWeight: 700, color: "#047857", marginBottom: 4 },
+														children: estRemainingQuotaUsd !== null ? formatCurrency(estRemainingQuotaUsd) : (usedPct === 0 ? "完全就绪" : "待推算")
+													}),
+													(0, react_jsx_runtime.jsx)("div", {
+														style: { fontSize: 10, color: "#059669" },
+														children: t("estRemainingHint")
+													})
+												]
+											})
+										]
+									}),
+
+									// Notice if zero usage or external usage
+									usedPct === 0 ? (0, react_jsx_runtime.jsxs)("div", {
+										style: { padding: "10px 14px", borderRadius: 6, background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#166534", fontSize: 11, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 },
+										children: [
+											(0, react_jsx_runtime.jsx)("span", { children: "💡" }),
+											(0, react_jsx_runtime.jsx)("span", { children: t("estZeroNotice") })
+										]
+									}) : (totalPeriodUsdCost === 0 && usedPct && usedPct > 0 ? (0, react_jsx_runtime.jsxs)("div", {
+										style: { padding: "10px 14px", borderRadius: 6, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", fontSize: 11, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 },
+										children: [
+											(0, react_jsx_runtime.jsx)("span", { children: "ℹ️" }),
+											(0, react_jsx_runtime.jsx)("span", { children: t("estExtNotice") })
+										]
+									}) : null),
+
+									// Multi-Account Estimation Matrix Section (rendered when multiple accounts exist)
+									accountMatrixList && accountMatrixList.length > 0 ? (0, react_jsx_runtime.jsxs)("div", {
+										style: {
+											borderRadius: 8,
+											border: "1px solid var(--dsw-alias-border-l3, #e5e7eb)",
+											background: "var(--dsw-alias-bg-layer-3, #fafafa)",
+											padding: "12px 14px",
+											marginBottom: 16
+										},
+										children: [
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 },
+												children: [
+													(0, react_jsx_runtime.jsxs)("div", {
+														children: [
+															(0, react_jsx_runtime.jsxs)("div", {
+																style: { fontSize: 13, fontWeight: 600, color: "var(--dsw-alias-label-primary, #111827)", display: "flex", alignItems: "center", gap: 6 },
+																children: [
+																	(0, react_jsx_runtime.jsx)("span", { children: "📊" }),
+																	(0, react_jsx_runtime.jsx)("span", { children: t("valuationMatrixTitle") })
+																]
+															}),
+															(0, react_jsx_runtime.jsx)("div", {
+																style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary, #9ca3af)", marginTop: 2 },
+																children: t("valuationMatrixDesc")
+															})
+														]
+													}),
+													(0, react_jsx_runtime.jsx)("button", {
+														type: "button",
+														style: {
+															padding: "3px 8px",
+															borderRadius: 6,
+															border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+															background: "var(--dsw-alias-bg-layer-3, #ffffff)",
+															fontSize: 11,
+															color: "var(--dsw-alias-label-secondary, #4b5563)",
+															cursor: "pointer"
+														},
+														onClick: () => {
+															if (accountsData.accounts) {
+																accountsData.accounts.forEach(acc => {
+																	if (acc.id !== accountsData.activeAccountId) fetchAccountQuota(acc.id);
+																});
+															}
+															fetchQuota(true);
+														},
+														children: `🔄 ${t("refreshAllAccounts")}`
+													})
+												]
+											}),
+												(0, react_jsx_runtime.jsx)("div", {
+												style: { overflowX: "auto" },
+												children: (0, react_jsx_runtime.jsxs)("table", {
+													style: { width: "100%", minWidth: 620, borderCollapse: "collapse", fontSize: 11, textAlign: "left" },
+													children: [
+														(0, react_jsx_runtime.jsx)("thead", {
+															children: (0, react_jsx_runtime.jsxs)("tr", {
+																style: { borderBottom: "1px solid var(--dsw-alias-border-l2, #e5e7eb)", color: "var(--dsw-alias-label-tertiary, #9ca3af)" },
+																children: [
+																	(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", whiteSpace: "nowrap" }, children: t("accountCol") }),
+																	(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "right", whiteSpace: "nowrap" }, children: t("totalRequests") }),
+																	(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "right", whiteSpace: "nowrap" }, children: t("windowTokens") }),
+																	(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "right", whiteSpace: "nowrap" }, children: t("windowUsedUsd") }),
+																	(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "right", whiteSpace: "nowrap" }, children: t("remainingQuotaPct") }),
+																	(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "right", whiteSpace: "nowrap" }, children: t("estTotalValue") }),
+																	(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "right", whiteSpace: "nowrap" }, children: t("estRemainingValue") }),
+																	(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "center", whiteSpace: "nowrap" }, children: t("accountActions") })
+																]
+															})
+														}),
+														(0, react_jsx_runtime.jsx)("tbody", {
+															children: accountMatrixList.map((row) => {
+																const isActive = row.account.id === accountsData.activeAccountId;
+																const remPct = typeof row.remainingFraction === "number" ? Math.round(row.remainingFraction * 1000) / 10 : null;
+																const colors = remPct !== null ? getPercentColor(remPct) : { text: "#6b7280", bar: "#9ca3af" };
+																return (0, react_jsx_runtime.jsxs)("tr", {
+																	key: row.account.id,
+																	style: {
+																		borderBottom: "1px solid var(--dsw-alias-border-l3, #f3f4f6)",
+																		background: isActive ? "rgba(2, 132, 199, 0.04)" : "transparent"
+																	},
+																	children: [
+																		// Account Info
+																		(0, react_jsx_runtime.jsx)("td", {
+																			style: { padding: "8px", whiteSpace: "nowrap" },
+																			children: (0, react_jsx_runtime.jsxs)("div", {
+																				style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" },
+																				children: [
+																					(0, react_jsx_runtime.jsx)("span", {
+																						style: { fontWeight: 600, color: "var(--dsw-alias-label-primary, #111827)" },
+																						children: row.account.name || row.account.email || row.account.id
+																					}),
+																					isActive ? (0, react_jsx_runtime.jsx)("span", {
+																						style: { padding: "1px 5px", borderRadius: 4, background: "#dbeafe", color: "#1d4ed8", fontSize: 10, fontWeight: 500 },
+																						children: t("currentActiveTag")
+																					}) : null,
+																					row.tier ? (0, react_jsx_runtime.jsx)("span", {
+																						style: { padding: "1px 5px", borderRadius: 4, background: "var(--dsw-alias-bg-module-platform, #f3f4f6)", color: "var(--dsw-alias-label-tertiary, #6b7280)", fontSize: 10 },
+																						children: row.tier
+																					}) : null
+																				]
+																			})
+																		}),
+																		// Requests
+																		(0, react_jsx_runtime.jsx)("td", {
+																			style: { padding: "8px", textAlign: "right", color: "var(--dsw-alias-label-primary, #111827)", whiteSpace: "nowrap" },
+																			children: row.requests
+																		}),
+																		// Tokens
+																		(0, react_jsx_runtime.jsx)("td", {
+																			style: { padding: "8px", textAlign: "right", color: "var(--dsw-alias-label-primary, #111827)", whiteSpace: "nowrap" },
+																			children: formatTokens(row.tokens)
+																		}),
+																		// Window Used USD
+																		(0, react_jsx_runtime.jsx)("td", {
+																			style: { padding: "8px", textAlign: "right", fontWeight: 600, color: row.usdCost > 0 ? "var(--dsw-alias-brand-primary, #0284c7)" : "var(--dsw-alias-label-tertiary, #9ca3af)", whiteSpace: "nowrap" },
+																			children: formatCurrency(row.usdCost)
+																		}),
+																		// Remaining Quota %
+																		(0, react_jsx_runtime.jsx)("td", {
+																			style: { padding: "8px", textAlign: "right", fontWeight: 600, color: colors.text, whiteSpace: "nowrap" },
+																			children: remPct !== null ? `${remPct}%` : "—"
+																		}),
+																		// Est. Total Value
+																		(0, react_jsx_runtime.jsx)("td", {
+																			style: { padding: "8px", textAlign: "right", color: row.estTotal !== null ? "#1d4ed8" : "var(--dsw-alias-label-tertiary, #9ca3af)", fontWeight: row.estTotal !== null ? 600 : 400, whiteSpace: "nowrap" },
+																			children: row.estTotal !== null ? formatCurrency(row.estTotal) : "—"
+																		}),
+																		// Est. Remaining Value
+																		(0, react_jsx_runtime.jsx)("td", {
+																			style: { padding: "8px", textAlign: "right", color: row.estRemaining !== null ? "#047857" : "var(--dsw-alias-label-tertiary, #9ca3af)", fontWeight: row.estRemaining !== null ? 600 : 400, whiteSpace: "nowrap" },
+																			children: row.estRemaining !== null ? formatCurrency(row.estRemaining) : "—"
+																		}),
+																		// Actions
+																		(0, react_jsx_runtime.jsx)("td", {
+																			style: { padding: "8px", textAlign: "center", whiteSpace: "nowrap" },
+																			children: !isActive ? (0, react_jsx_runtime.jsx)("button", {
+																				type: "button",
+																				style: {
+																					padding: "2px 8px",
+																					borderRadius: 4,
+																					border: "1px solid var(--dsw-alias-brand-primary, #0284c7)",
+																					background: "#f0f9ff",
+																					color: "var(--dsw-alias-brand-primary, #0284c7)",
+																					fontSize: 11,
+																					cursor: switchingAccountId !== null ? "default" : "pointer"
+																				},
+																				disabled: switchingAccountId !== null,
+																				onClick: () => handleSwitchAccount(row.account.id),
+																				children: switchingAccountId === row.account.id ? t("switching") : t("switchToAccount")
+																			}) : (0, react_jsx_runtime.jsx)("span", {
+																				style: { color: "var(--dsw-alias-label-tertiary, #9ca3af)", fontSize: 10 },
+																				children: "✓"
+																			})
+																		})
+																	]
+																});
+															})
+														}),
+														// Footer Totals
+														(0, react_jsx_runtime.jsx)("tfoot", {
+															children: (() => {
+																const sumReqs = accountMatrixList.reduce((acc, r) => acc + r.requests, 0);
+																const sumTokens = accountMatrixList.reduce((acc, r) => acc + r.tokens, 0);
+																const sumCost = accountMatrixList.reduce((acc, r) => acc + r.usdCost, 0);
+																const sumEstTotal = accountMatrixList.reduce((acc, r) => r.estTotal ? acc + r.estTotal : acc, 0);
+																const sumEstRem = accountMatrixList.reduce((acc, r) => r.estRemaining ? acc + r.estRemaining : acc, 0);
+																return (0, react_jsx_runtime.jsxs)("tr", {
+																	style: { borderTop: "2px solid var(--dsw-alias-border-l2, #e5e7eb)", fontWeight: 600 },
+																	children: [
+																		(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px", color: "var(--dsw-alias-label-primary, #111827)", whiteSpace: "nowrap" }, children: t("accountFilterAll") }),
+																		(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px", textAlign: "right", whiteSpace: "nowrap" }, children: sumReqs }),
+																		(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px", textAlign: "right", whiteSpace: "nowrap" }, children: formatTokens(sumTokens) }),
+																		(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px", textAlign: "right", color: "#0284c7", whiteSpace: "nowrap" }, children: formatCurrency(sumCost) }),
+																		(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px", textAlign: "right", whiteSpace: "nowrap" }, children: "—" }),
+																		(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px", textAlign: "right", color: sumEstTotal > 0 ? "#1d4ed8" : "inherit", whiteSpace: "nowrap" }, children: sumEstTotal > 0 ? formatCurrency(sumEstTotal) : "—" }),
+																		(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px", textAlign: "right", color: sumEstRem > 0 ? "#047857" : "inherit", whiteSpace: "nowrap" }, children: sumEstRem > 0 ? formatCurrency(sumEstRem) : "—" }),
+																		(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px" } })
+																	]
+																});
+															})()
+														})
+													]
+												})
+											})
+										]
+									}) : null,
+
+									// Historical Quota Fluctuation & Multi-Account Line Chart Section
+									(0, react_jsx_runtime.jsxs)("div", {
+										style: {
+											borderRadius: 8,
+											border: "1px solid var(--dsw-alias-border-l3, #e5e7eb)",
+											background: "var(--dsw-alias-bg-layer-3, #fafafa)",
+											padding: "14px 16px",
+											marginBottom: 16
+										},
+										children: [
+											// Section Header + Controls Bar
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, flexWrap: "wrap", gap: 10 },
+												children: [
+													(0, react_jsx_runtime.jsxs)("div", {
+														children: [
+															(0, react_jsx_runtime.jsxs)("div", {
+																style: { fontSize: 13, fontWeight: 600, color: "var(--dsw-alias-label-primary, #111827)", display: "flex", alignItems: "center", gap: 6 },
+																children: [
+																	(0, react_jsx_runtime.jsx)("span", { children: "📈" }),
+																	(0, react_jsx_runtime.jsx)("span", { children: t("valuationHistoryTitle") })
+																]
+															}),
+															(0, react_jsx_runtime.jsx)("div", {
+																style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary, #9ca3af)", marginTop: 2 },
+																children: t("valuationHistoryDesc")
+															})
+														]
+													}),
+													// Action Buttons (Record Snapshot & Clear History)
+													(0, react_jsx_runtime.jsxs)("div", {
+														style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" },
+														children: [
+															snapshotToast ? (0, react_jsx_runtime.jsx)("span", {
+																style: { fontSize: 11, color: "#16a34a", fontWeight: 500 },
+																children: `✓ ${snapshotToast}`
+															}) : null,
+															(0, react_jsx_runtime.jsx)("button", {
+																type: "button",
+																style: {
+																	padding: "4px 10px",
+																	borderRadius: 6,
+																	border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+																	background: "var(--dsw-alias-bg-layer-3, #ffffff)",
+																	fontSize: 11,
+																	color: "var(--dsw-alias-label-primary, #111827)",
+																	cursor: recordingSnapshot ? "default" : "pointer"
+																},
+																disabled: recordingSnapshot,
+																onClick: () => handleRecordSnapshot(true),
+																children: recordingSnapshot ? t("recordingSnapshot") : `📸 ${t("recordSnapshotBtn")}`
+															}),
+															(0, react_jsx_runtime.jsx)("button", {
+																type: "button",
+																style: {
+																	padding: "4px 8px",
+																	borderRadius: 6,
+																	border: "1px solid #fecaca",
+																	background: "#fee2e2",
+																	fontSize: 11,
+																	color: "#dc2626",
+																	cursor: "pointer"
+																},
+																onClick: handleClearValuationHistory,
+																children: `🗑️ ${t("clearHistoryBtn")}`
+															})
+														]
+													})
+												]
+											}),
+
+											// Metric Switcher + Account Selection Toolbar
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 12, padding: "8px 10px", borderRadius: 6, background: "var(--dsw-alias-bg-layer-2, #ffffff)", border: "1px solid var(--dsw-alias-border-l3, #f3f4f6)" },
+												children: [
+													// Metric Pills
+													(0, react_jsx_runtime.jsxs)("div", {
+														style: { display: "flex", gap: 4, background: "var(--dsw-alias-bg-module-platform, #f3f4f6)", padding: 2, borderRadius: 6 },
+														children: [
+															(0, react_jsx_runtime.jsx)("button", {
+																type: "button",
+																style: {
+																	padding: "3px 8px",
+																	borderRadius: 5,
+																	border: "none",
+																	fontSize: 11,
+																	fontWeight: chartMetric === "estTotal" ? 600 : 400,
+																	background: chartMetric === "estTotal" ? "var(--dsw-alias-bg-layer-3, #ffffff)" : "transparent",
+																	color: chartMetric === "estTotal" ? "#1d4ed8" : "var(--dsw-alias-label-secondary, #6b7280)",
+																	boxShadow: chartMetric === "estTotal" ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+																	cursor: "pointer"
+																},
+																onClick: () => setChartMetric("estTotal"),
+																children: `🔮 ${t("metricEstTotal")}`
+															}),
+															(0, react_jsx_runtime.jsx)("button", {
+																type: "button",
+																style: {
+																	padding: "3px 8px",
+																	borderRadius: 5,
+																	border: "none",
+																	fontSize: 11,
+																	fontWeight: chartMetric === "usdCost" ? 600 : 400,
+																	background: chartMetric === "usdCost" ? "var(--dsw-alias-bg-layer-3, #ffffff)" : "transparent",
+																	color: chartMetric === "usdCost" ? "#0284c7" : "var(--dsw-alias-label-secondary, #6b7280)",
+																	boxShadow: chartMetric === "usdCost" ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+																	cursor: "pointer"
+																},
+																onClick: () => setChartMetric("usdCost"),
+																children: `💸 ${t("metricUsdCost")}`
+															}),
+															(0, react_jsx_runtime.jsx)("button", {
+																type: "button",
+																style: {
+																	padding: "3px 8px",
+																	borderRadius: 5,
+																	border: "none",
+																	fontSize: 11,
+																	fontWeight: chartMetric === "remainingFraction" ? 600 : 400,
+																	background: chartMetric === "remainingFraction" ? "var(--dsw-alias-bg-layer-3, #ffffff)" : "transparent",
+																	color: chartMetric === "remainingFraction" ? "#059669" : "var(--dsw-alias-label-secondary, #6b7280)",
+																	boxShadow: chartMetric === "remainingFraction" ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+																	cursor: "pointer"
+																},
+																onClick: () => setChartMetric("remainingFraction"),
+																children: `🛡️ ${t("metricRemaining")}`
+															})
+														]
+													}),
+
+													// Account Selectors (Multi-select toggles)
+													(0, react_jsx_runtime.jsxs)("div", {
+														style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" },
+														children: [
+															...(accountsData.accounts || []).map((acc, accIdx) => {
+																const isChecked = selectedChartAccounts.has(acc.id);
+																const color = getAccountColor(accIdx);
+																return (0, react_jsx_runtime.jsxs)("button", {
+																	key: acc.id,
+																	type: "button",
+																	style: {
+																		display: "flex",
+																		alignItems: "center",
+																		gap: 5,
+																		padding: "3px 8px",
+																		borderRadius: 6,
+																		border: `1px solid ${isChecked ? color : "var(--dsw-alias-border-l2, #d1d5db)"}`,
+																		background: isChecked ? `${color}14` : "var(--dsw-alias-bg-layer-3, #ffffff)",
+																		color: isChecked ? color : "var(--dsw-alias-label-secondary, #6b7280)",
+																		fontSize: 11,
+																		fontWeight: isChecked ? 600 : 400,
+																		cursor: "pointer",
+																		transition: "all 0.15s"
+																	},
+																	onClick: () => toggleChartAccount(acc.id),
+																	children: [
+																		(0, react_jsx_runtime.jsx)("span", { style: { width: 8, height: 8, borderRadius: "50%", background: color, display: "inline-block" } }),
+																		(0, react_jsx_runtime.jsx)("span", { children: acc.name || acc.email || acc.id }),
+																		(0, react_jsx_runtime.jsx)("span", { style: { fontSize: 10 }, children: isChecked ? "✓" : "" })
+																	]
+																});
+															}),
+															accountsData.accounts && accountsData.accounts.length > 1 ? (0, react_jsx_runtime.jsxs)("div", {
+																style: { display: "flex", gap: 4, marginLeft: 4 },
+																children: [
+																	(0, react_jsx_runtime.jsx)("button", {
+																		type: "button",
+																		style: { padding: "2px 6px", fontSize: 10, borderRadius: 4, border: "1px solid var(--dsw-alias-border-l2, #d1d5db)", background: "transparent", color: "var(--dsw-alias-label-tertiary, #6b7280)", cursor: "pointer" },
+																		onClick: selectAllChartAccounts,
+																		children: t("selectAll")
+																	}),
+																	(0, react_jsx_runtime.jsx)("button", {
+																		type: "button",
+																		style: { padding: "2px 6px", fontSize: 10, borderRadius: 4, border: "1px solid var(--dsw-alias-border-l2, #d1d5db)", background: "transparent", color: "var(--dsw-alias-label-tertiary, #6b7280)", cursor: "pointer" },
+																		onClick: deselectAllChartAccounts,
+																		children: t("deselectAll")
+																	})
+																]
+															}) : null
+														]
+													})
+												]
+											}),
+
+											// SVG Line Chart Container
+											(() => {
+												const periodCycles = valuationCycles.filter(c => (activeValuationPeriod === "all" || c.period === activeValuationPeriod));
+												const accountsList = (accountsData.accounts || []);
+												const selectedAccountsList = accountsList.filter(a => selectedChartAccounts.has(a.id));
+
+												if (selectedAccountsList.length === 0) {
+													return (0, react_jsx_runtime.jsx)("div", {
+														style: { padding: "30px 16px", textAlign: "center", color: "var(--dsw-alias-label-tertiary, #9ca3af)", fontSize: 12 },
+														children: t("noAccountsSelected")
+													});
+												}
+
+												if (periodCycles.length === 0) {
+													return (0, react_jsx_runtime.jsxs)("div", {
+														style: { padding: "32px 16px", textAlign: "center", color: "var(--dsw-alias-label-tertiary, #9ca3af)", fontSize: 12, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 },
+														children: [
+															(0, react_jsx_runtime.jsx)("span", { style: { fontSize: 24 }, children: "📉" }),
+															(0, react_jsx_runtime.jsx)("div", { children: t("noHistoryNotice") }),
+															(0, react_jsx_runtime.jsx)("button", {
+																type: "button",
+																style: { padding: "4px 12px", borderRadius: 6, border: "1px solid var(--dsw-alias-brand-primary, #0284c7)", background: "#f0f9ff", color: "var(--dsw-alias-brand-primary, #0284c7)", fontSize: 11, cursor: "pointer" },
+																onClick: () => handleRecordSnapshot(true),
+																children: `📸 ${t("recordSnapshotBtn")}`
+															})
+														]
+													});
+												}
+
+												// Chart layout metrics
+												const svgWidth = 720;
+												const svgHeight = 220;
+												const padLeft = 60;
+												const padRight = 35;
+												const padTop = 20;
+												const padBottom = 40;
+												const plotW = svgWidth - padLeft - padRight;
+												const plotH = svgHeight - padTop - padBottom;
+
+												// Extract values for all selected accounts across cycles
+												const allMetricVals = [];
+												const accountPointsMap = {};
+
+												selectedAccountsList.forEach((acc) => {
+													const color = getAccountColor(accountsList.findIndex(a => a.id === acc.id));
+													accountPointsMap[acc.id] = {
+														account: acc,
+														color,
+														points: []
+													};
+												});
+
+												periodCycles.forEach((cycle, cIdx) => {
+													const x = periodCycles.length === 1
+														? (padLeft + plotW / 2)
+														: (padLeft + (cIdx / (periodCycles.length - 1)) * plotW);
+
+													selectedAccountsList.forEach(acc => {
+														const accData = cycle.accounts?.[acc.id];
+														let val = null;
+														if (accData) {
+															if (chartMetric === "estTotal") val = typeof accData.estTotalValue === "number" ? accData.estTotalValue : null;
+															else if (chartMetric === "usdCost") val = typeof accData.usdCost === "number" ? accData.usdCost : 0;
+															else if (chartMetric === "remainingFraction") val = typeof accData.remainingFraction === "number" ? Math.round(accData.remainingFraction * 1000) / 10 : null;
+														}
+														if (val !== null && !isNaN(val)) {
+															allMetricVals.push(val);
+															accountPointsMap[acc.id].points.push({ x, val, cycle, cIdx, accData, acc });
+														}
+													});
+												});
+
+												let minY = 0;
+												let maxY = chartMetric === "remainingFraction" ? 100 : 1;
+												if (allMetricVals.length > 0) {
+													const maxObserved = Math.max(...allMetricVals);
+													if (chartMetric === "remainingFraction") {
+														maxY = 100;
+													} else {
+														maxY = maxObserved > 0 ? (maxObserved * 1.2) : 1;
+													}
+												}
+												if (maxY === minY) maxY = minY + 1;
+
+												const getY = (v) => (padTop + plotH) - ((v - minY) / (maxY - minY)) * plotH;
+
+												const ticks = [0, 0.33, 0.66, 1.0].map(ratio => {
+													const val = minY + ratio * (maxY - minY);
+													const y = (padTop + plotH) - ratio * plotH;
+													return { val, y };
+												});
+
+												return (0, react_jsx_runtime.jsxs)("div", {
+													style: { width: "100%", position: "relative" },
+													children: [
+														(0, react_jsx_runtime.jsxs)("svg", {
+															viewBox: `0 0 ${svgWidth} ${svgHeight}`,
+															style: { width: "100%", height: "auto", display: "block" },
+															children: [
+																// Horizontal Grid Lines & Y-Labels
+																ticks.map((tck, idx) => (0, react_jsx_runtime.jsxs)("g", {
+																	key: idx,
+																	children: [
+																		(0, react_jsx_runtime.jsx)("line", {
+																			x1: padLeft,
+																			y1: tck.y,
+																			x2: padLeft + plotW,
+																			y2: tck.y,
+																			stroke: "var(--dsw-alias-border-l3, #e5e7eb)",
+																			strokeDasharray: "3,3",
+																			strokeWidth: "1"
+																		}),
+																		(0, react_jsx_runtime.jsx)("text", {
+																			x: padLeft - 8,
+																			y: tck.y + 4,
+																			textAnchor: "end",
+																			fontSize: "10",
+																			fill: "var(--dsw-alias-label-tertiary, #9ca3af)",
+																			children: chartMetric === "remainingFraction" ? `${Math.round(tck.val)}%` : formatCurrency(tck.val)
+																		})
+																	]
+																})),
+
+																// X-Axis Baseline
+																(0, react_jsx_runtime.jsx)("line", {
+																	x1: padLeft,
+																	y1: padTop + plotH,
+																	x2: padLeft + plotW,
+																	y2: padTop + plotH,
+																	stroke: "var(--dsw-alias-border-l2, #d1d5db)",
+																	strokeWidth: "1"
+																}),
+
+																// X-Axis Labels (Cycles)
+																periodCycles.map((cycle, cIdx) => {
+																	const x = periodCycles.length === 1 ? (padLeft + plotW / 2) : (padLeft + (cIdx / (periodCycles.length - 1)) * plotW);
+																	let label = "";
+																	if (cycle.resetTime) {
+																		try {
+																			const d = new Date(cycle.resetTime);
+																			label = `${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+																		} catch { label = cycle.cycleId || ""; }
+																	} else {
+																		label = `P${cIdx+1}`;
+																	}
+																	return (0, react_jsx_runtime.jsx)("text", {
+																		key: cIdx,
+																		x,
+																		y: padTop + plotH + 18,
+																		textAnchor: "middle",
+																		fontSize: "10",
+																		fill: "var(--dsw-alias-label-secondary, #6b7280)",
+																		children: label
+																	});
+																}),
+
+																// Polylines & Data Point Circles per Account
+																selectedAccountsList.map(acc => {
+																	const series = accountPointsMap[acc.id];
+																	if (!series || series.points.length === 0) return null;
+																	const pointsStr = series.points.map(pt => `${pt.x},${getY(pt.val)}`).join(" ");
+
+																	return (0, react_jsx_runtime.jsxs)("g", {
+																		key: acc.id,
+																		children: [
+																			series.points.length > 1 ? (0, react_jsx_runtime.jsx)("polyline", {
+																				fill: "none",
+																				stroke: series.color,
+																				strokeWidth: "2.5",
+																				strokeLinejoin: "round",
+																				strokeLinecap: "round",
+																				points: pointsStr
+																			}) : null,
+																			series.points.map((pt, pIdx) => {
+																				const isHovered = hoveredChartPoint?.accId === acc.id && hoveredChartPoint?.cIdx === pt.cIdx;
+																				return (0, react_jsx_runtime.jsx)("circle", {
+																					key: pIdx,
+																					cx: pt.x,
+																					cy: getY(pt.val),
+																					r: isHovered ? 6 : 4,
+																					fill: series.color,
+																					stroke: "#ffffff",
+																					strokeWidth: isHovered ? 2.5 : 1.5,
+																					style: { cursor: "pointer", transition: "r 0.15s" },
+																					onMouseEnter: () => setHoveredChartPoint({
+																						accId: acc.id,
+																						cIdx: pt.cIdx,
+																						accName: acc.name || acc.email || acc.id,
+																						val: pt.val,
+																						accData: pt.accData,
+																						cycle: pt.cycle,
+																						x: pt.x,
+																						y: getY(pt.val),
+																						color: series.color
+																					}),
+																					onMouseLeave: () => setHoveredChartPoint(null)
+																				});
+																			})
+																		]
+																	});
+																})
+															]
+														}),
+
+														// Floating Hover Tooltip
+														hoveredChartPoint ? (0, react_jsx_runtime.jsxs)("div", {
+															style: {
+																position: "absolute",
+																left: Math.min(Math.max(10, (hoveredChartPoint.x / svgWidth) * 100), 75) + "%",
+																top: Math.max(10, (hoveredChartPoint.y / svgHeight) * 100 - 15) + "%",
+																background: "rgba(17, 24, 39, 0.92)",
+																color: "#ffffff",
+																padding: "8px 12px",
+																borderRadius: 6,
+																fontSize: 11,
+																pointerEvents: "none",
+																boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.2)",
+																zIndex: 20,
+																whiteSpace: "nowrap",
+																display: "flex",
+																flexDirection: "column",
+																gap: 2
+															},
+															children: [
+																(0, react_jsx_runtime.jsxs)("div", {
+																	style: { fontWeight: 600, display: "flex", alignItems: "center", gap: 5 },
+																	children: [
+																		(0, react_jsx_runtime.jsx)("span", { style: { width: 7, height: 7, borderRadius: "50%", background: hoveredChartPoint.color } }),
+																		(0, react_jsx_runtime.jsx)("span", { children: hoveredChartPoint.accName })
+																	]
+																}),
+																(0, react_jsx_runtime.jsxs)("div", {
+																	style: { color: "#9ca3af", fontSize: 10 },
+																	children: [
+																		"周期: ",
+																		hoveredChartPoint.cycle?.resetTime
+																			? new Date(hoveredChartPoint.cycle.resetTime).toLocaleString()
+																			: hoveredChartPoint.cycle?.cycleId
+																	]
+																}),
+																(0, react_jsx_runtime.jsxs)("div", {
+																	style: { color: "#38bdf8", fontWeight: 600, marginTop: 2 },
+																	children: [
+																		chartMetric === "estTotal" ? `${t("estTotalValue")}: ${formatCurrency(hoveredChartPoint.val)}` :
+																		chartMetric === "usdCost" ? `${t("windowUsedUsd")}: ${formatCurrency(hoveredChartPoint.val)}` :
+																		`${t("remainingQuotaPct")}: ${hoveredChartPoint.val}%`
+																	]
+																}),
+																hoveredChartPoint.accData ? (0, react_jsx_runtime.jsxs)("div", {
+																	style: { color: "#d1d5db", fontSize: 10 },
+																	children: [
+																		`消耗: ${formatCurrency(hoveredChartPoint.accData.usdCost || 0)} (${formatTokens(hoveredChartPoint.accData.tokens || 0)} Tokens) | 剩余: ${typeof hoveredChartPoint.accData.remainingFraction === "number" ? Math.round(hoveredChartPoint.accData.remainingFraction * 100) + "%" : "—"}`
+																	]
+																}) : null
+															]
+														}) : null,
+
+														// Fluctuation Summary Cards (波动分析)
+														(0, react_jsx_runtime.jsxs)("div", {
+															style: { marginTop: 14, borderTop: "1px solid var(--dsw-alias-border-l3, #f3f4f6)", paddingTop: 10 },
+															children: [
+																(0, react_jsx_runtime.jsxs)("div", {
+																	style: { fontSize: 11, fontWeight: 600, color: "var(--dsw-alias-label-secondary, #4b5563)", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 },
+																	children: [
+																		(0, react_jsx_runtime.jsx)("span", { children: "📊" }),
+																		(0, react_jsx_runtime.jsx)("span", { children: t("fluctuationSummary") })
+																	]
+																}),
+																(0, react_jsx_runtime.jsx)("div", {
+																	style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8 },
+																	children: selectedAccountsList.map(acc => {
+																		const series = accountPointsMap[acc.id];
+																		const vals = (series?.points || []).map(pt => pt.val);
+																		if (vals.length === 0) return null;
+																		const minV = Math.min(...vals);
+																		const maxV = Math.max(...vals);
+																		const span = maxV - minV;
+																		const avgV = vals.reduce((a,b)=>a+b, 0) / vals.length;
+																		const flucPct = avgV > 0 ? ((span / avgV) * 100).toFixed(1) : "0.0";
+
+																		return (0, react_jsx_runtime.jsxs)("div", {
+																			key: acc.id,
+																			style: {
+																				padding: "8px 10px",
+																				borderRadius: 6,
+																				background: "var(--dsw-alias-bg-layer-2, #ffffff)",
+																				border: "1px solid var(--dsw-alias-border-l3, #f3f4f6)",
+																				display: "flex",
+																				flexDirection: "column",
+																				gap: 2
+																			},
+																			children: [
+																				(0, react_jsx_runtime.jsxs)("div", {
+																					style: { display: "flex", alignItems: "center", justifyContent: "space-between" },
+																					children: [
+																						(0, react_jsx_runtime.jsxs)("div", {
+																							style: { display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, color: "var(--dsw-alias-label-primary, #111827)" },
+																							children: [
+																								(0, react_jsx_runtime.jsx)("span", { style: { width: 7, height: 7, borderRadius: "50%", background: series.color } }),
+																								(0, react_jsx_runtime.jsx)("span", { children: acc.name || acc.email || acc.id })
+																							]
+																						}),
+																						(0, react_jsx_runtime.jsx)("span", {
+																							style: { fontSize: 10, padding: "1px 5px", borderRadius: 4, background: span > 0.5 ? "#fee2e2" : "#ecfdf5", color: span > 0.5 ? "#dc2626" : "#059669", fontWeight: 600 },
+																							children: vals.length > 1 ? `±${flucPct}%` : "基准点"
+																						})
+																					]
+																				}),
+																				(0, react_jsx_runtime.jsxs)("div", {
+																					style: { fontSize: 10, color: "var(--dsw-alias-label-secondary, #6b7280)", display: "flex", justifyContent: "space-between", marginTop: 2 },
+																					children: [
+																						(0, react_jsx_runtime.jsxs)("span", { children: [`${t("fluctuationRange")}: `, chartMetric === "remainingFraction" ? `${minV}% ~ ${maxV}%` : `${formatCurrency(minV)} ~ ${formatCurrency(maxV)}`] }),
+																						vals.length > 1 ? (0, react_jsx_runtime.jsxs)("span", { children: [`Δ: `, chartMetric === "remainingFraction" ? `${span.toFixed(1)}%` : formatCurrency(span)] }) : null
+																					]
+																				})
+																			]
+																		});
+																	})
+																})
+															]
+														})
+													]
+												});
+											})()
+										]
+									}),
+
+									// Pricing & Valuation Table Section
+									(0, react_jsx_runtime.jsxs)("div", {
+										style: {
+											borderRadius: 8,
+											border: "1px solid var(--dsw-alias-border-l3, #e5e7eb)",
+											background: "var(--dsw-alias-bg-layer-3, #fafafa)",
+											padding: "12px 14px",
+											marginBottom: 16
+										},
+										children: [
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 },
+												children: [
+													(0, react_jsx_runtime.jsxs)("div", {
+														children: [
+															(0, react_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 600, color: "var(--dsw-alias-label-primary, #111827)" }, children: t("pricingTableTitle") }),
+															(0, react_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary, #9ca3af)", marginTop: 2 }, children: t("pricingNote") })
+														]
+													}),
+													(0, react_jsx_runtime.jsxs)("div", {
+														style: { display: "flex", alignItems: "center", gap: 8 },
+														children: [
+															pricingSavedToast ? (0, react_jsx_runtime.jsx)("span", {
+																style: { fontSize: 11, color: "#16a34a", fontWeight: 500 },
+																children: `✅ ${t("pricingSavedToast")}`
+															}) : null,
+															(0, react_jsx_runtime.jsx)("button", {
+																type: "button",
+																style: {
+																	padding: "4px 8px",
+																	borderRadius: 6,
+																	border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+																	background: "var(--dsw-alias-bg-layer-3, #ffffff)",
+																	fontSize: 11,
+																	color: "var(--dsw-alias-label-secondary, #4b5563)",
+																	cursor: "pointer"
+																},
+																onClick: () => setShowAllCatalogModels(!showAllCatalogModels),
+																children: showAllCatalogModels ? t("hideAllModelsToggle") : t("showAllModelsToggle")
+															}),
+															(0, react_jsx_runtime.jsx)("button", {
+																type: "button",
+																style: {
+																	padding: "4px 8px",
+																	borderRadius: 6,
+																	border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+																	background: "var(--dsw-alias-bg-layer-3, #ffffff)",
+																	fontSize: 11,
+																	color: "var(--dsw-alias-label-secondary, #4b5563)",
+																	cursor: "pointer"
+																},
+																onClick: handleResetPricing,
+																children: t("resetPricingBtn")
+															}),
+															(0, react_jsx_runtime.jsx)("button", {
+																type: "button",
+																style: {
+																	padding: "4px 10px",
+																	borderRadius: 6,
+																	border: "none",
+																	background: "var(--dsw-alias-brand-primary, #0284c7)",
+																	color: "#ffffff",
+																	fontSize: 11,
+																	fontWeight: 500,
+																	cursor: "pointer"
+																},
+																onClick: handleSavePricing,
+																children: t("savePricingBtn")
+															})
+														]
+													})
+												]
+											}),
+
+											// Table
+											(0, react_jsx_runtime.jsx)("div", {
+												style: { overflowX: "auto" },
+												children: (0, react_jsx_runtime.jsxs)("table", {
+													style: { width: "100%", borderCollapse: "collapse", fontSize: 11, textAlign: "left" },
+													children: [
+														(0, react_jsx_runtime.jsx)("thead", {
+															children: (0, react_jsx_runtime.jsxs)("tr", {
+																style: { borderBottom: "1px solid var(--dsw-alias-border-l2, #e5e7eb)", color: "var(--dsw-alias-label-tertiary, #9ca3af)" },
+																children: [
+																	(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px" }, children: t("modelCol") }),
+																	(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "right" }, children: t("inputTokensCol") }),
+																	(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "center", width: 90 }, children: t("inputPriceCol") }),
+																	(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "right" }, children: t("outputTokensCol") }),
+																	(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "center", width: 90 }, children: t("outputPriceCol") }),
+																	(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "right" }, children: t("cacheTokensCol") }),
+																	(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "center", width: 90 }, children: t("cachePriceCol") }),
+																	(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "right" }, children: t("periodCostCol") })
+																]
+															})
+														}),
+														(0, react_jsx_runtime.jsx)("tbody", {
+															children: modelCostList.length > 0 ? modelCostList.map((item, idx) => (0, react_jsx_runtime.jsxs)("tr", {
+																key: idx,
+																style: { borderBottom: "1px solid var(--dsw-alias-border-l3, #f3f4f6)", background: item.usdCost > 0 ? "rgba(2, 132, 199, 0.02)" : "transparent" },
+																children: [
+																	// Model name
+																	(0, react_jsx_runtime.jsxs)("td", {
+																		style: { padding: "8px", fontWeight: 500, color: "var(--dsw-alias-label-primary, #111827)", whiteSpace: "nowrap" },
+																		children: [
+																			(0, react_jsx_runtime.jsx)("span", { children: item.modelId }),
+																			item.stats.requests > 0 ? (0, react_jsx_runtime.jsx)("span", {
+																				style: { fontSize: 10, color: "var(--dsw-alias-label-tertiary, #9ca3af)", marginLeft: 4 },
+																				children: `(${item.stats.requests}次)`
+																			}) : null
+																		]
+																	}),
+																	// Input Tokens
+																	(0, react_jsx_runtime.jsx)("td", {
+																		style: { padding: "8px", textAlign: "right", color: item.stats.inputTokens > 0 ? "var(--dsw-alias-label-primary, #111827)" : "var(--dsw-alias-label-tertiary, #9ca3af)" },
+																		children: formatTokens(item.stats.inputTokens)
+																	}),
+																	// Input Price Input
+																	(0, react_jsx_runtime.jsx)("td", {
+																		style: { padding: "4px 6px", textAlign: "center" },
+																		children: (0, react_jsx_runtime.jsxs)("div", {
+																			style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 2 },
+																			children: [
+																				(0, react_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-label-tertiary, #9ca3af)" }, children: "$" }),
+																				(0, react_jsx_runtime.jsx)("input", {
+																					type: "number",
+																					step: "0.001",
+																					min: "0",
+																					style: {
+																						width: 60,
+																						height: 24,
+																						borderRadius: 4,
+																						border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+																						background: "var(--dsw-alias-bg-layer-3, #ffffff)",
+																						color: "var(--dsw-alias-label-primary, #111827)",
+																						fontSize: 11,
+																						textAlign: "right",
+																						padding: "0 4px"
+																					},
+																					value: item.pricing.input,
+																					onChange: (e) => handlePriceChange(item.modelId, "input", e.target.value)
+																				})
+																			]
+																		})
+																	}),
+																	// Output Tokens (inc reasoning)
+																	(0, react_jsx_runtime.jsxs)("td", {
+																		style: { padding: "8px", textAlign: "right", color: item.outputWithReasoning > 0 ? "var(--dsw-alias-label-primary, #111827)" : "var(--dsw-alias-label-tertiary, #9ca3af)" },
+																		title: `输出: ${item.stats.outputTokens}, 思维链: ${item.stats.reasoningTokens}`,
+																		children: [
+																			formatTokens(item.outputWithReasoning),
+																			item.stats.reasoningTokens > 0 ? (0, react_jsx_runtime.jsx)("span", {
+																				style: { fontSize: 10, color: "#8b5cf6", marginLeft: 4 },
+																				children: `(💭${formatTokens(item.stats.reasoningTokens)})`
+																			}) : null
+																		]
+																	}),
+																	// Output Price Input
+																	(0, react_jsx_runtime.jsx)("td", {
+																		style: { padding: "4px 6px", textAlign: "center" },
+																		children: (0, react_jsx_runtime.jsxs)("div", {
+																			style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 2 },
+																			children: [
+																				(0, react_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-label-tertiary, #9ca3af)" }, children: "$" }),
+																				(0, react_jsx_runtime.jsx)("input", {
+																					type: "number",
+																					step: "0.01",
+																					min: "0",
+																					style: {
+																						width: 60,
+																						height: 24,
+																						borderRadius: 4,
+																						border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+																						background: "var(--dsw-alias-bg-layer-3, #ffffff)",
+																						color: "var(--dsw-alias-label-primary, #111827)",
+																						fontSize: 11,
+																						textAlign: "right",
+																						padding: "0 4px"
+																					},
+																					value: item.pricing.output,
+																					onChange: (e) => handlePriceChange(item.modelId, "output", e.target.value)
+																				})
+																			]
+																		})
+																	}),
+																	// Cache Read Tokens
+																	(0, react_jsx_runtime.jsx)("td", {
+																		style: { padding: "8px", textAlign: "right", color: item.stats.cacheReadTokens > 0 ? "#059669" : "var(--dsw-alias-label-tertiary, #9ca3af)", fontWeight: item.stats.cacheReadTokens > 0 ? 500 : 400 },
+																		children: formatTokens(item.stats.cacheReadTokens)
+																	}),
+																	// Cache Price Input
+																	(0, react_jsx_runtime.jsx)("td", {
+																		style: { padding: "4px 6px", textAlign: "center" },
+																		children: (0, react_jsx_runtime.jsxs)("div", {
+																			style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 2 },
+																			children: [
+																				(0, react_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-label-tertiary, #9ca3af)" }, children: "$" }),
+																				(0, react_jsx_runtime.jsx)("input", {
+																					type: "number",
+																					step: "0.001",
+																					min: "0",
+																					style: {
+																						width: 60,
+																						height: 24,
+																						borderRadius: 4,
+																						border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+																						background: "var(--dsw-alias-bg-layer-3, #ffffff)",
+																						color: "var(--dsw-alias-label-primary, #111827)",
+																						fontSize: 11,
+																						textAlign: "right",
+																						padding: "0 4px"
+																					},
+																					value: item.pricing.cache,
+																					onChange: (e) => handlePriceChange(item.modelId, "cache", e.target.value)
+																				})
+																			]
+																		})
+																	}),
+																	// Subtotal USD
+																	(0, react_jsx_runtime.jsx)("td", {
+																		style: { padding: "8px", textAlign: "right", fontWeight: 600, color: item.usdCost > 0 ? "var(--dsw-alias-brand-primary, #0284c7)" : "var(--dsw-alias-label-tertiary, #9ca3af)" },
+																		children: formatCurrency(item.usdCost)
+																	})
+																]
+															})) : (0, react_jsx_runtime.jsx)("tr", {
+																children: (0, react_jsx_runtime.jsx)("td", {
+																	colSpan: 8,
+																	style: { padding: "16px", textAlign: "center", color: "var(--dsw-alias-label-tertiary, #9ca3af)" },
+																	children: t("noUsageInWindow")
+																})
+															})
+														}),
+														// Table Footer Totals
+														(0, react_jsx_runtime.jsx)("tfoot", {
+															children: (0, react_jsx_runtime.jsxs)("tr", {
+																style: { borderTop: "2px solid var(--dsw-alias-border-l2, #e5e7eb)", fontWeight: 600 },
+																children: [
+																	(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px", color: "var(--dsw-alias-label-primary, #111827)" }, children: t("totalPeriodCost") }),
+																	(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px", textAlign: "right", color: "var(--dsw-alias-label-primary, #111827)" }, children: formatTokens(totalPeriodInputTokens) }),
+																	(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px" } }),
+																	(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px", textAlign: "right", color: "var(--dsw-alias-label-primary, #111827)" }, children: formatTokens(totalPeriodOutputTokens + totalPeriodReasoningTokens) }),
+																	(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px" } }),
+																	(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px", textAlign: "right", color: "#059669" }, children: formatTokens(totalPeriodCacheReadTokens) }),
+																	(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px" } }),
+																	(0, react_jsx_runtime.jsx)("td", { style: { padding: "8px", textAlign: "right", color: "#0284c7", fontSize: 13 }, children: formatCurrency(totalPeriodUsdCost) })
+																]
+															})
+														})
+													]
+												})
+											})
+										]
+									}),
+
+									// Per-Model Quota Breakdown (if quotaData.models is populated)
+									quotaData?.models?.length ? (0, react_jsx_runtime.jsxs)("div", {
+										style: {
+											borderRadius: 8,
+											border: "1px solid var(--dsw-alias-border-l3, #e5e7eb)",
+											background: "var(--dsw-alias-bg-layer-3, #fafafa)",
+											padding: "12px 14px"
+										},
+										children: [
+											(0, react_jsx_runtime.jsx)("div", {
+												style: { fontSize: 12, fontWeight: 600, color: "var(--dsw-alias-label-secondary, #6b7280)", marginBottom: 8 },
+												children: t("perModelEstTitle")
+											}),
+											(0, react_jsx_runtime.jsx)("div", {
+												style: { overflowX: "auto" },
+												children: (0, react_jsx_runtime.jsxs)("table", {
+													style: { width: "100%", borderCollapse: "collapse", fontSize: 11, textAlign: "left" },
+													children: [
+														(0, react_jsx_runtime.jsx)("thead", {
+															children: (0, react_jsx_runtime.jsxs)("tr", {
+																style: { borderBottom: "1px solid var(--dsw-alias-border-l2, #e5e7eb)", color: "var(--dsw-alias-label-tertiary, #9ca3af)" },
+																children: [
+																	(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px" }, children: t("perModelHeader") }),
+																	(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "right" }, children: t("perModelRemHeader") }),
+																	(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "right" }, children: t("perModelCostHeader") }),
+																	(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "right" }, children: t("perModelTotalHeader") }),
+																	(0, react_jsx_runtime.jsx)("th", { style: { padding: "6px 8px", textAlign: "right" }, children: t("perModelRemValHeader") })
+																]
+															})
+														}),
+														(0, react_jsx_runtime.jsx)("tbody", {
+															children: quotaData.models.map((m, mIdx) => {
+																const colors = getPercentColor(m.remainingPercent ?? 100);
+																const itemCost = modelCostList.find(x => x.modelId === m.id)?.usdCost || 0;
+																const mRemFraction = m.remainingFraction;
+																const mUsedFraction = typeof mRemFraction === "number" ? Math.max(0, 1 - mRemFraction) : null;
+																let mEstTotal = null;
+																let mEstRem = null;
+																if (mUsedFraction !== null && mUsedFraction > 0.0001 && itemCost > 0) {
+																	mEstTotal = itemCost / mUsedFraction;
+																	mEstRem = mEstTotal * (mRemFraction ?? 0);
+																}
+																return (0, react_jsx_runtime.jsxs)("tr", {
+																	key: mIdx,
+																	style: { borderBottom: "1px solid var(--dsw-alias-border-l3, #f3f4f6)" },
+																	children: [
+																		(0, react_jsx_runtime.jsx)("td", { style: { padding: "6px 8px", fontWeight: 500, color: "var(--dsw-alias-label-primary, #111827)" }, children: m.displayName || m.id }),
+																		(0, react_jsx_runtime.jsx)("td", { style: { padding: "6px 8px", textAlign: "right", fontWeight: 600, color: colors.text }, children: `${m.remainingPercent}%` }),
+																		(0, react_jsx_runtime.jsx)("td", { style: { padding: "6px 8px", textAlign: "right", color: itemCost > 0 ? "var(--dsw-alias-label-primary, #111827)" : "var(--dsw-alias-label-tertiary, #9ca3af)" }, children: formatCurrency(itemCost) }),
+																		(0, react_jsx_runtime.jsx)("td", { style: { padding: "6px 8px", textAlign: "right", color: mEstTotal !== null ? "#1d4ed8" : "var(--dsw-alias-label-tertiary, #9ca3af)" }, children: mEstTotal !== null ? formatCurrency(mEstTotal) : "—" }),
+																		(0, react_jsx_runtime.jsx)("td", { style: { padding: "6px 8px", textAlign: "right", color: mEstRem !== null ? "#047857" : "var(--dsw-alias-label-tertiary, #9ca3af)" }, children: mEstRem !== null ? formatCurrency(mEstRem) : "—" })
+																	]
+																});
+															})
+														})
+													]
+												})
+											})
+										]
+									}) : null
+								]
+							}) : null,
+
+							// Tab: Integrated Web Search
+							activeTab === "search" ? (0, react_jsx_runtime.jsxs)("div", {
+								style: { padding: "16px 20px 20px 20px", display: "flex", flexDirection: "column", gap: 16 },
+								children: [
+									searchToast ? (0, react_jsx_runtime.jsx)("div", {
+										style: { padding: "8px 14px", borderRadius: 8, background: "#dcfce7", color: "#15803d", fontSize: 13, fontWeight: 500 },
+										children: searchToast
+									}) : null,
+
+									// 1. Search Provider Card
+									(0, react_jsx_runtime.jsxs)("div", {
+										style: {
+											padding: 16,
+											borderRadius: 12,
+											background: "var(--dsw-alias-bg-module-platform, #f9fafb)",
+											border: "0.5px solid var(--dsw-alias-border-l3, #e5e7eb)",
+											display: "flex",
+											flexDirection: "column",
+											gap: 12
+										},
+										children: [
+											(0, react_jsx_runtime.jsxs)("div", {
+												children: [
+													(0, react_jsx_runtime.jsx)("div", {
+														style: { fontSize: 14, fontWeight: 600, color: "var(--dsw-alias-label-primary, #111827)" },
+														children: `🌐 ${t("searchProviderLabel") || "默认联网搜索服务提供方"}`
+													}),
+													(0, react_jsx_runtime.jsx)("div", {
+														style: { fontSize: 12, color: "var(--dsw-alias-label-tertiary, #6b7280)", marginTop: 2 },
+														children: t("searchProviderHint") || "选择全局网页搜索工具优先调用的后端引擎。"
+													})
+												]
+											}),
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { display: "flex", flexDirection: "column", gap: 8, paddingTop: 4 },
+												children: [
+													(0, react_jsx_runtime.jsxs)("label", {
+														style: { display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: "var(--dsw-alias-label-primary, #111827)" },
+														children: [
+															(0, react_jsx_runtime.jsx)("input", {
+																type: "radio",
+																name: "searchProviderOption",
+																checked: searchProvider === "antigravity",
+																onChange: () => handleSetSearchProvider("antigravity")
+															}),
+															(0, react_jsx_runtime.jsx)("span", {
+																style: { fontWeight: searchProvider === "antigravity" ? 600 : 400 },
+																children: t("optAntigravitySearch") || "Google Antigravity 搜索 (Gemini Grounding + 异步真实标题抓取与直链解析)"
+															})
+														]
+													}),
+													(0, react_jsx_runtime.jsxs)("label", {
+														style: { display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: "var(--dsw-alias-label-primary, #111827)" },
+														children: [
+															(0, react_jsx_runtime.jsx)("input", {
+																type: "radio",
+																name: "searchProviderOption",
+																checked: searchProvider === "deepseek",
+																onChange: () => handleSetSearchProvider("deepseek")
+															}),
+															(0, react_jsx_runtime.jsx)("span", {
+																style: { fontWeight: searchProvider === "deepseek" ? 600 : 400 },
+																children: t("optDeepseekSearch") || "DeepSeek 官方搜索"
+															})
+														]
+													})
+												]
+											})
+										]
+									}),
+
+									// 2. Antigravity Advanced Grounding Search Parameters
+									(0, react_jsx_runtime.jsxs)("div", {
+										style: {
+											padding: 16,
+											borderRadius: 12,
+											background: "var(--dsw-alias-bg-module-platform, #f9fafb)",
+											border: "0.5px solid var(--dsw-alias-border-l3, #e5e7eb)",
+											display: "flex",
+											flexDirection: "column",
+											gap: 14
+										},
+										children: [
+											(0, react_jsx_runtime.jsxs)("div", {
+												children: [
+													(0, react_jsx_runtime.jsx)("div", {
+														style: { fontSize: 14, fontWeight: 600, color: "var(--dsw-alias-label-primary, #111827)" },
+														children: `⚙️ ${t("searchSettingsTitle") || "Antigravity 原生搜索高级参数"}`
+													}),
+													(0, react_jsx_runtime.jsx)("div", {
+														style: { fontSize: 12, color: "var(--dsw-alias-label-tertiary, #6b7280)", marginTop: 2 },
+														children: t("searchSettingsDesc") || "配置网页直链解析、标题抓取与底层执行模型。"
+													})
+												]
+											}),
+
+											// Checkboxes
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { display: "flex", flexDirection: "column", gap: 10, paddingTop: 4 },
+												children: [
+													(0, react_jsx_runtime.jsxs)("label", {
+														style: { display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer" },
+														children: [
+															(0, react_jsx_runtime.jsx)("input", {
+																type: "checkbox",
+																style: { marginTop: 3 },
+																checked: currentFetchPageTitles,
+																onChange: (e) => setSearchDraft(prev => ({ ...prev, fetchPageTitles: e.target.checked }))
+															}),
+															(0, react_jsx_runtime.jsxs)("div", {
+																children: [
+																	(0, react_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 500, color: "var(--dsw-alias-label-primary, #111827)" }, children: t("fetchPageTitlesLabel") || "抓取并替换网页真实标题" }),
+																	(0, react_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: "var(--dsw-alias-label-tertiary, #6b7280)" }, children: t("fetchPageTitlesHint") || "直链解析后并发抓取目标页面原生 <title> 替换域名，使搜索引用标题更精准可读（推荐开启）。" })
+																]
+															})
+														]
+													}),
+													(0, react_jsx_runtime.jsxs)("label", {
+														style: { display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer" },
+														children: [
+															(0, react_jsx_runtime.jsx)("input", {
+																type: "checkbox",
+																style: { marginTop: 3 },
+																checked: currentDropUnresolved,
+																onChange: (e) => setSearchDraft(prev => ({ ...prev, dropUnresolvedRedirects: e.target.checked }))
+															}),
+															(0, react_jsx_runtime.jsxs)("div", {
+																children: [
+																	(0, react_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 500, color: "var(--dsw-alias-label-primary, #111827)" }, children: t("dropUnresolvedLabel") || "过滤无法直连解析的结果" }),
+																	(0, react_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: "var(--dsw-alias-label-tertiary, #6b7280)" }, children: t("dropUnresolvedHint") || "当目标网页重定向超时或解析失败时，自动过滤该搜索结果。" })
+																]
+															})
+														]
+													})
+												]
+											}),
+
+											// Numeric & Model inputs
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, paddingTop: 4 },
+												children: [
+													(0, react_jsx_runtime.jsxs)("div", {
+														style: { display: "flex", flexDirection: "column", gap: 4 },
+														children: [
+															(0, react_jsx_runtime.jsx)("label", { style: { fontSize: 12, fontWeight: 500, color: "var(--dsw-alias-label-primary, #111827)" }, children: t("redirectTimeoutLabel") || "直链解析超时 (ms)" }),
+															(0, react_jsx_runtime.jsx)("input", {
+																type: "number",
+																style: { height: 32, padding: "0 8px", borderRadius: 6, border: "0.5px solid var(--dsw-alias-border-l3, #d1d5db)", background: "var(--dsw-alias-bg-layer-2, #ffffff)", fontSize: 12 },
+																value: currentRedirectTimeout,
+																onChange: (e) => setSearchDraft(prev => ({ ...prev, redirectTimeoutMs: parseInt(e.target.value, 10) || 3000 }))
+															})
+														]
+													}),
+													(0, react_jsx_runtime.jsxs)("div", {
+														style: { display: "flex", flexDirection: "column", gap: 4 },
+														children: [
+															(0, react_jsx_runtime.jsx)("label", { style: { fontSize: 12, fontWeight: 500, color: "var(--dsw-alias-label-primary, #111827)" }, children: t("pageTitleTimeoutLabel") || "网页标题抓取超时 (ms)" }),
+															(0, react_jsx_runtime.jsx)("input", {
+																type: "number",
+																style: { height: 32, padding: "0 8px", borderRadius: 6, border: "0.5px solid var(--dsw-alias-border-l3, #d1d5db)", background: "var(--dsw-alias-bg-layer-2, #ffffff)", fontSize: 12 },
+																value: currentPageTitleTimeout,
+																onChange: (e) => setSearchDraft(prev => ({ ...prev, pageTitleTimeoutMs: parseInt(e.target.value, 10) || 2500 }))
+															})
+														]
+													}),
+													(0, react_jsx_runtime.jsxs)("div", {
+														style: { display: "flex", flexDirection: "column", gap: 4 },
+														children: [
+															(0, react_jsx_runtime.jsx)("label", { style: { fontSize: 12, fontWeight: 500, color: "var(--dsw-alias-label-primary, #111827)" }, children: t("searchModelLabel") || "搜索底层执行模型" }),
+															(0, react_jsx_runtime.jsx)("input", {
+																type: "text",
+																style: { height: 32, padding: "0 8px", borderRadius: 6, border: "0.5px solid var(--dsw-alias-border-l3, #d1d5db)", background: "var(--dsw-alias-bg-layer-2, #ffffff)", fontSize: 12 },
+																value: currentSearchModel,
+																onChange: (e) => setSearchDraft(prev => ({ ...prev, model: e.target.value }))
+															})
+														]
+													}),
+													(0, react_jsx_runtime.jsxs)("div", {
+														style: { display: "flex", flexDirection: "column", gap: 4 },
+														children: [
+															(0, react_jsx_runtime.jsx)("label", { style: { fontSize: 12, fontWeight: 500, color: "var(--dsw-alias-label-primary, #111827)" }, children: t("maxUsesLabel") || "单次最大搜索次数" }),
+															(0, react_jsx_runtime.jsx)("input", {
+																type: "number",
+																style: { height: 32, padding: "0 8px", borderRadius: 6, border: "0.5px solid var(--dsw-alias-border-l3, #d1d5db)", background: "var(--dsw-alias-bg-layer-2, #ffffff)", fontSize: 12 },
+																value: currentMaxUses,
+																onChange: (e) => setSearchDraft(prev => ({ ...prev, maxUses: parseInt(e.target.value, 10) || 5 }))
+															})
+														]
+													})
+												]
+											}),
+
+											// Save Button Row
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 },
+												children: [
+													searchDirty ? (0, react_jsx_runtime.jsx)("button", {
+														type: "button",
+														style: { padding: "6px 14px", borderRadius: 6, border: "0.5px solid var(--dsw-alias-border-l3, #d1d5db)", background: "none", fontSize: 12, cursor: "pointer", color: "var(--dsw-alias-label-secondary, #6b7280)" },
+														onClick: () => setSearchDraft({}),
+														children: t("discard") || "放弃修改"
+													}) : null,
+													(0, react_jsx_runtime.jsx)("button", {
+														type: "button",
+														disabled: !searchDirty || savingSearch,
+														style: {
+															padding: "6px 16px",
+															borderRadius: 6,
+															border: "none",
+															background: searchDirty ? "var(--dsw-alias-brand-primary, #0284c7)" : "var(--dsw-alias-bg-layer-3, #9ca3af)",
+															color: "#ffffff",
+															fontSize: 12,
+															fontWeight: 500,
+															cursor: (!searchDirty || savingSearch) ? "not-allowed" : "pointer"
+														},
+														onClick: handleSaveWebSearch,
+														children: savingSearch ? (t("saving") || "保存中…") : (t("searchSaveBtn") || "保存搜索设置")
+													})
+												]
+											})
+										]
+									})
+								]
+							}) : null,
+
+							// Tab 4: Configuration View
+							activeTab === "config" ? (0, react_jsx_runtime.jsxs)("div", {
+								style: { padding: "16px 20px 20px 20px" },
+								children: [
+									(0, react_jsx_runtime.jsxs)("div", {
+										style: { display: "flex", flexDirection: "column", gap: 12 },
+										children: [
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { display: "flex", flexDirection: "column", gap: 6 },
+												children: [
+													(0, react_jsx_runtime.jsx)("label", {
+														style: { fontSize: 13, fontWeight: 500, color: "var(--dsw-alias-label-primary, #111827)" },
+														children: t("tokenLabel")
+													}),
+													(0, react_jsx_runtime.jsx)("input", {
+														type: "password",
+														autoComplete: "off",
+														style: {
+															height: 36,
+															borderRadius: 8,
+															border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+															background: "var(--dsw-alias-bg-layer-3, #ffffff)",
+															padding: "0 12px",
+															fontSize: 13,
+															color: "var(--dsw-alias-label-primary, #111827)"
+														},
+														placeholder: state.tokenConfigured ? t("tokenPlaceholderSet") : t("tokenPlaceholder"),
+														value: state.draftToken ?? "",
+														disabled,
+														onChange: (e) => props.setDraftToken(e.target.value)
+													}),
+													(0, react_jsx_runtime.jsx)("p", {
+														style: { fontSize: 12, color: "var(--dsw-alias-label-tertiary, #9ca3af)", margin: 0 },
+														children: t("tokenHint")
+													})
+												]
+											}),
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: { display: "flex", flexDirection: "column", gap: 6 },
+												children: [
+													(0, react_jsx_runtime.jsx)("label", {
+														style: { fontSize: 13, fontWeight: 500, color: "var(--dsw-alias-label-primary, #111827)" },
+														children: t("baseUrlLabel")
+													}),
+													(0, react_jsx_runtime.jsx)("input", {
+														type: "text",
+														style: {
+															height: 36,
+															borderRadius: 8,
+															border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+															background: "var(--dsw-alias-bg-layer-3, #ffffff)",
+															padding: "0 12px",
+															fontSize: 13,
+															color: "var(--dsw-alias-label-primary, #111827)"
+														},
+														placeholder: "https://daily-cloudcode-pa.googleapis.com/v1internal",
+														value: state.draftBaseUrl ?? state.effectiveBaseUrl ?? "",
+														disabled,
+														onChange: (e) => props.setDraftBaseUrl(e.target.value)
+													}),
+													(0, react_jsx_runtime.jsx)("p", {
+														style: { fontSize: 12, color: "var(--dsw-alias-label-tertiary, #9ca3af)", margin: 0 },
+														children: t("baseUrlHint")
+													})
+												]
+											}),
+											// 1M Context Window Mode Section
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: {
+													marginTop: 4,
+													padding: "14px 16px",
+													borderRadius: 8,
+													background: "var(--dsw-alias-bg-layer-2, #f9fafb)",
+													border: "1px solid var(--dsw-alias-border-l2, #e5e7eb)",
+													display: "flex",
+													flexDirection: "column",
+													gap: 8
+												},
+												children: [
+													(0, react_jsx_runtime.jsxs)("div", {
+														style: { display: "flex", justifyContent: "space-between", alignItems: "center" },
+														children: [
+															(0, react_jsx_runtime.jsxs)("div", {
+																style: { flex: 1, paddingRight: 12 },
+																children: [
+																	(0, react_jsx_runtime.jsxs)("div", {
+																		style: { fontSize: 13, fontWeight: 600, color: "var(--dsw-alias-label-primary, #111827)", display: "flex", alignItems: "center", gap: 6 },
+																		children: [
+																			"🧠",
+																			t("enable1MModeLabel"),
+																			(0, react_jsx_runtime.jsx)("span", {
+																				style: {
+																					fontSize: 10,
+																					padding: "1px 6px",
+																					borderRadius: 4,
+																					fontWeight: 500,
+																					background: (state.draftEnable1MMode ?? state.effectiveEnable1MMode ?? false)
+																						? "rgba(16, 185, 129, 0.12)"
+																						: "var(--dsw-alias-bg-module-platform, #e5e7eb)",
+																					color: (state.draftEnable1MMode ?? state.effectiveEnable1MMode ?? false)
+																						? "#059669"
+																						: "var(--dsw-alias-label-secondary, #4b5563)"
+																				},
+																				children: (state.draftEnable1MMode ?? state.effectiveEnable1MMode ?? false)
+																					? t("enable1MModeBadgeOn")
+																					: t("enable1MModeBadgeOff")
+																			})
+																		]
+																	}),
+																	(0, react_jsx_runtime.jsx)("p", {
+																		style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary, #9ca3af)", margin: "3px 0 0 0", lineHeight: "1.4" },
+																		children: t("enable1MModeHint")
+																	})
+																]
+															}),
+															(0, react_jsx_runtime.jsx)("label", {
+																style: { display: "flex", alignItems: "center", cursor: "pointer" },
+																children: (0, react_jsx_runtime.jsx)("input", {
+																	type: "checkbox",
+																	style: { width: 16, height: 16, cursor: "pointer" },
+																	checked: Boolean(state.draftEnable1MMode ?? state.effectiveEnable1MMode ?? false),
+																	disabled,
+																	onChange: (e) => props.setDraftEnable1MMode(e.target.checked)
+																})
+															})
+														]
+													})
+												]
+											}),
+											// Gemini 3.1 Flash Image (NanoBanana 2) Integration Section
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: {
+													marginTop: 8,
+													padding: "14px 16px",
+													borderRadius: 8,
+													background: "var(--dsw-alias-bg-layer-2, #f9fafb)",
+													border: "1px solid var(--dsw-alias-border-l2, #e5e7eb)",
+													display: "flex",
+													flexDirection: "column",
+													gap: 6
+												},
+												children: [
+													(0, react_jsx_runtime.jsxs)("div", {
+														style: { display: "flex", justifyContent: "space-between", alignItems: "center" },
+														children: [
+															(0, react_jsx_runtime.jsx)("span", {
+																style: { fontSize: 13, fontWeight: 600, color: "var(--dsw-alias-label-primary, #111827)" },
+																children: "🎨 " + (t("imagenTitle") || "Gemini 3.1 Flash Image (NanoBanana 2) 图像生成 (dsh-image-gen-antigravity)")
+															}),
+															(0, react_jsx_runtime.jsx)("span", {
+																style: { fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "#dcfce7", color: "#15803d", fontWeight: 500 },
+																children: t("imagenStatusActive") || "🟢 图像生成服务已就绪"
+															})
+														]
+													}),
+													(0, react_jsx_runtime.jsx)("p", {
+														style: { margin: 0, fontSize: 12, color: "var(--dsw-alias-label-secondary, #6b7280)", lineHeight: 1.5 },
+														children: t("imagenDesc") || "已集成 Google Gemini 3.1 Flash Image（社区代号 NanoBanana 2）原生多模态生图能力，与当前 Antigravity 活跃账号共享同一 OAuth 2.0 凭据及代理通道。在对话中输入生图提示词即可直接调用生成图像，支持比例调节与多图垫图编辑。"
+													})
+												]
+											}),
+											// QuotaPilot Reporting Configuration Section
+											(0, react_jsx_runtime.jsxs)("div", {
+												style: {
+													marginTop: 8,
+													padding: "14px 16px",
+													borderRadius: 8,
+													background: "var(--dsw-alias-bg-layer-2, #f9fafb)",
+													border: "1px solid var(--dsw-alias-border-l2, #e5e7eb)",
+													display: "flex",
+													flexDirection: "column",
+													gap: 12
+												},
+												children: [
+													(0, react_jsx_runtime.jsxs)("div", {
+														style: { display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--dsw-alias-border-l2, #e5e7eb)", paddingBottom: 8 },
+														children: [
+															(0, react_jsx_runtime.jsxs)("div", {
+																children: [
+																	(0, react_jsx_runtime.jsx)("div", {
+																		style: { fontSize: 13, fontWeight: 600, color: "var(--dsw-alias-label-primary, #111827)" },
+																		children: `⚡ ${t("quotaPilotSection")}`
+																	}),
+																	(0, react_jsx_runtime.jsx)("p", {
+																		style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary, #9ca3af)", margin: "2px 0 0 0" },
+																		children: t("quotaPilotDesc")
+																	})
+																]
+															}),
+															(0, react_jsx_runtime.jsxs)("label", {
+																style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer", color: "var(--dsw-alias-label-primary, #111827)", userSelect: "none" },
+																children: [
+																	(0, react_jsx_runtime.jsx)("input", {
+																		type: "checkbox",
+																		checked: state.draftReportEnabled ?? state.effectiveReportEnabled ?? true,
+																		disabled,
+																		onChange: (e) => props.setDraftReportEnabled(e.target.checked)
+																	}),
+																	(0, react_jsx_runtime.jsx)("span", { children: t("quotaPilotEnabledLabel") })
+																]
+															})
+														]
+													}),
+													(0, react_jsx_runtime.jsxs)("div", {
+														style: { display: "flex", flexDirection: "column", gap: 4 },
+														children: [
+															(0, react_jsx_runtime.jsx)("label", {
+																style: { fontSize: 12, fontWeight: 500, color: "var(--dsw-alias-label-primary, #111827)" },
+																children: t("quotaPilotEndpointLabel")
+															}),
+															(0, react_jsx_runtime.jsx)("input", {
+																type: "text",
+																style: {
+																	height: 34,
+																	borderRadius: 6,
+																	border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+																	background: "var(--dsw-alias-bg-layer-3, #ffffff)",
+																	padding: "0 10px",
+																	fontSize: 12,
+																	color: "var(--dsw-alias-label-primary, #111827)"
+																},
+																placeholder: t("quotaPilotEndpointPlaceholder"),
+																value: state.draftReportEndpoint ?? state.effectiveReportEndpoint ?? "",
+																disabled,
+																onChange: (e) => props.setDraftReportEndpoint(e.target.value)
+															}),
+															(0, react_jsx_runtime.jsx)("p", {
+																style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary, #9ca3af)", margin: 0 },
+																children: t("quotaPilotEndpointHint")
+															})
+														]
+													}),
+													(0, react_jsx_runtime.jsxs)("div", {
+														style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 },
+														children: [
+															(0, react_jsx_runtime.jsxs)("div", {
+																style: { display: "flex", flexDirection: "column", gap: 4 },
+																children: [
+																	(0, react_jsx_runtime.jsx)("label", {
+																		style: { fontSize: 12, fontWeight: 500, color: "var(--dsw-alias-label-primary, #111827)" },
+																		children: t("quotaPilotClientIdLabel")
+																	}),
+																	(0, react_jsx_runtime.jsx)("input", {
+																		type: "text",
+																		style: {
+																			height: 34,
+																			borderRadius: 6,
+																			border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+																			background: "var(--dsw-alias-bg-layer-3, #ffffff)",
+																			padding: "0 10px",
+																			fontSize: 12,
+																			color: "var(--dsw-alias-label-primary, #111827)"
+																		},
+																		placeholder: t("quotaPilotClientIdPlaceholder"),
+																		value: state.draftReportClientId ?? state.effectiveReportClientId ?? "",
+																		disabled,
+																		onChange: (e) => props.setDraftReportClientId(e.target.value)
+																	})
+																]
+															}),
+															(0, react_jsx_runtime.jsxs)("div", {
+																style: { display: "flex", flexDirection: "column", gap: 4 },
+																children: [
+																	(0, react_jsx_runtime.jsx)("label", {
+																		style: { fontSize: 12, fontWeight: 500, color: "var(--dsw-alias-label-primary, #111827)" },
+																		children: t("quotaPilotSecretLabel")
+																	}),
+																	(0, react_jsx_runtime.jsx)("input", {
+																		type: "password",
+																		autoComplete: "off",
+																		style: {
+																			height: 34,
+																			borderRadius: 6,
+																			border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+																			background: "var(--dsw-alias-bg-layer-3, #ffffff)",
+																			padding: "0 10px",
+																			fontSize: 12,
+																			color: "var(--dsw-alias-label-primary, #111827)"
+																		},
+																		placeholder: t("quotaPilotSecretPlaceholder"),
+																		value: state.draftReportSecret ?? state.effectiveReportSecret ?? "",
+																		disabled,
+																		onChange: (e) => props.setDraftReportSecret(e.target.value)
+																	})
+																]
+															})
+														]
+													}),
+													(0, react_jsx_runtime.jsxs)("div", {
+														style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, flexWrap: "wrap", gap: 8 },
+														children: [
+															(0, react_jsx_runtime.jsx)("button", {
+																type: "button",
+																style: {
+																	padding: "4px 12px",
+																	borderRadius: 6,
+																	border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+																	background: "var(--dsw-alias-bg-layer-3, #ffffff)",
+																	fontSize: 11,
+																	fontWeight: 500,
+																	cursor: testingReporter ? "default" : "pointer",
+																	color: "var(--dsw-alias-label-primary, #111827)"
+																},
+																disabled: testingReporter,
+																onClick: handleTestReporter,
+																children: testingReporter ? t("quotaPilotTesting") : `🧪 ${t("quotaPilotTestBtn")}`
+															}),
+															(state.effectiveReportEndpoint || state.draftReportEndpoint) ? (0, react_jsx_runtime.jsx)("a", {
+																href: (state.draftReportEndpoint || state.effectiveReportEndpoint || "").replace(/\/api\/report\/?$/, ""),
+																target: "_blank",
+																rel: "noopener noreferrer",
+																style: { fontSize: 11, color: "var(--dsw-alias-brand-primary, #0284c7)", textDecoration: "none", fontWeight: 500 },
+																children: `↗ ${t("openDashboardBtn")}`
+															}) : null
+														]
+													}),
+													reporterTestMsg ? (0, react_jsx_runtime.jsx)("div", {
+														style: {
+															padding: "6px 10px",
+															borderRadius: 6,
+															fontSize: 11,
+															background: reporterTestMsg.isError ? "rgba(239, 68, 68, 0.1)" : "rgba(16, 185, 129, 0.1)",
+															color: reporterTestMsg.isError ? "#dc2626" : "#059669"
+														},
+														children: reporterTestMsg.text
+													}) : null
+												]
+											})
+										]
+									}),
+									(0, react_jsx_runtime.jsxs)("div", {
+										style: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 },
+										children: [
+											dirty ? (0, react_jsx_runtime.jsx)("button", {
+												type: "button",
+												style: {
+													padding: "6px 14px",
+													borderRadius: 6,
+													border: "1px solid var(--dsw-alias-border-l2, #d1d5db)",
+													background: "none",
+													fontSize: 12,
+													cursor: "pointer",
+													color: "var(--dsw-alias-label-secondary, #4b5563)"
+												},
+												onClick: props.discard,
+												children: t("discard")
+											}) : null,
+											(0, react_jsx_runtime.jsx)("button", {
+												type: "button",
+												style: {
+													padding: "6px 14px",
+													borderRadius: 6,
+													border: "none",
+													background: "var(--dsw-alias-brand-primary, #0284c7)",
+													color: "#ffffff",
+													fontSize: 12,
+													fontWeight: 500,
+													cursor: dirty ? "pointer" : "default",
+													opacity: dirty ? 1 : 0.5
+												},
+												disabled: !dirty || disabled || state.saving,
+												onClick: props.save,
+												children: t(state.saving ? "saving" : "save")
+											})
+										]
+									})
+								]
+							}) : null
+						]
+					}) : null
+				]
+			});
+		}
+
+		class AntigravityCardController {
+			constructor(scope, ctx) {
+				this.scope = scope;
+				this.ctx = ctx;
+				this.draftToken = void 0;
+				this.draftBaseUrl = void 0;
+				this.draftReportEndpoint = void 0;
+				this.draftReportClientId = void 0;
+				this.draftReportSecret = void 0;
+				this.draftReportEnabled = void 0;
+				this.draftEnable1MMode = void 0;
+				this.saving = false;
+				this.tokenConfigured = false;
+				this.store = (0, _deepseek_ai_dsh_client_runtime_client.createSnapshotStore)(this.projection());
+				scope.subscribe(() => {
+					this.store.set(this.projection());
+				});
+				this.checkCredential();
+			}
+
+			async checkCredential() {
+				try {
+					let configured = false;
+					if (this.ctx?.remote?.credentials?.describe) {
+						const res = await this.ctx.remote.credentials.describe([TOKEN_REF]);
+						if (res && res.ok && res.value) {
+							configured = res.value[TOKEN_REF]?.configured ?? false;
+						} else if (res && res[TOKEN_REF]) {
+							configured = res[TOKEN_REF]?.configured ?? false;
+						}
+					} else if (this.ctx?.get?.("connection")?.api?.credentials?.describe) {
+						const api = this.ctx.get("connection").api;
+						const res = await api.credentials.describe({ refs: [TOKEN_REF] });
+						if (res?.result?.ok) {
+							configured = res.result.value.credentials?.[TOKEN_REF]?.configured ?? false;
+						}
+					}
+					this.tokenConfigured = configured;
+					this.store.set(this.projection());
+				} catch (e) {
+					console.error("[antigravity] checkCredential error:", e);
+				}
+			}
+
+			projection() {
+				const snapshot = this.scope.getSnapshot();
+				const effectiveBaseUrl = snapshot.value?.baseURL ?? "https://daily-cloudcode-pa.googleapis.com/v1internal";
+				const effectiveReportEndpoint = snapshot.value?.reportEndpoint ?? "";
+				const effectiveReportClientId = snapshot.value?.reportClientId ?? "dsh-antigravity";
+				const effectiveReportSecret = snapshot.value?.reportSecret ?? "";
+				const effectiveReportEnabled = snapshot.value?.reportEnabled ?? true;
+				const effectiveEnable1MMode = Boolean(snapshot.value?.enable1MMode ?? false);
+				return {
+					writable: snapshot.writable,
+					effectiveBaseUrl,
+					draftBaseUrl: this.draftBaseUrl,
+					effectiveReportEndpoint,
+					draftReportEndpoint: this.draftReportEndpoint,
+					effectiveReportClientId,
+					draftReportClientId: this.draftReportClientId,
+					effectiveReportSecret,
+					draftReportSecret: this.draftReportSecret,
+					effectiveReportEnabled,
+					draftReportEnabled: this.draftReportEnabled,
+					effectiveEnable1MMode,
+					draftEnable1MMode: this.draftEnable1MMode,
+					draftToken: this.draftToken,
+					tokenConfigured: this.tokenConfigured,
+					saving: this.saving
+				};
+			}
+
+			setDraftToken(val) {
+				this.draftToken = val;
+				this.store.set(this.projection());
+			}
+
+			setDraftBaseUrl(val) {
+				this.draftBaseUrl = val;
+				this.store.set(this.projection());
+			}
+
+			setDraftReportEndpoint(val) {
+				this.draftReportEndpoint = val;
+				this.store.set(this.projection());
+			}
+
+			setDraftReportClientId(val) {
+				this.draftReportClientId = val;
+				this.store.set(this.projection());
+			}
+
+			setDraftReportSecret(val) {
+				this.draftReportSecret = val;
+				this.store.set(this.projection());
+			}
+
+			setDraftReportEnabled(val) {
+				this.draftReportEnabled = val;
+				this.store.set(this.projection());
+			}
+
+			setDraftEnable1MMode(val) {
+				this.draftEnable1MMode = val;
+				this.store.set(this.projection());
+			}
+
+			discard() {
+				this.draftToken = void 0;
+				this.draftBaseUrl = void 0;
+				this.draftReportEndpoint = void 0;
+				this.draftReportClientId = void 0;
+				this.draftReportSecret = void 0;
+				this.draftReportEnabled = void 0;
+				this.draftEnable1MMode = void 0;
+				this.store.set(this.projection());
+			}
+
+			async save() {
+				this.saving = true;
+				this.store.set(this.projection());
+				try {
+					if (this.draftToken !== void 0 && this.draftToken.trim().length > 0) {
+						if (this.ctx?.remote?.credentials?.set) {
+							await this.ctx.remote.credentials.set(TOKEN_REF, this.draftToken.trim());
+						} else if (this.ctx?.get?.("connection")?.api?.credentials?.set) {
+							const api = this.ctx.get("connection").api;
+							await api.credentials.set({
+								ref: TOKEN_REF,
+								value: this.draftToken.trim()
+							});
+						}
+						try {
+							await fetch("/api/antigravity/reset", { method: "POST" });
+						} catch (err) {
+							console.error("[antigravity] reset call failed:", err);
+						}
+						this.tokenConfigured = true;
+						this.draftToken = void 0;
+					}
+					const ops = [];
+					if (this.draftBaseUrl !== void 0) {
+						ops.push({ op: "set", path: ["baseURL"], value: this.draftBaseUrl.trim() });
+						this.draftBaseUrl = void 0;
+					}
+					if (this.draftReportEndpoint !== void 0) {
+						ops.push({ op: "set", path: ["reportEndpoint"], value: this.draftReportEndpoint.trim() });
+						this.draftReportEndpoint = void 0;
+					}
+					if (this.draftReportClientId !== void 0) {
+						ops.push({ op: "set", path: ["reportClientId"], value: this.draftReportClientId.trim() });
+						this.draftReportClientId = void 0;
+					}
+					if (this.draftReportSecret !== void 0) {
+						ops.push({ op: "set", path: ["reportSecret"], value: this.draftReportSecret.trim() });
+						this.draftReportSecret = void 0;
+					}
+					if (this.draftReportEnabled !== void 0) {
+						ops.push({ op: "set", path: ["reportEnabled"], value: Boolean(this.draftReportEnabled) });
+						this.draftReportEnabled = void 0;
+					}
+					if (this.draftEnable1MMode !== void 0) {
+						ops.push({ op: "set", path: ["enable1MMode"], value: Boolean(this.draftEnable1MMode) });
+						this.draftEnable1MMode = void 0;
+					}
+					if (ops.length > 0) {
+						if (this.scope && typeof this.scope.mutate === "function") {
+							await this.scope.mutate(ops);
+						} else if (this.ctx?.get?.("connection")?.api?.settings?.mutate) {
+							const api = this.ctx.get("connection").api;
+							await api.settings.mutate({
+								ns: NS,
+								ops
+							});
+						}
+					}
+				} catch (e) {
+					console.error("[antigravity] save error:", e);
+				} finally {
+					this.saving = false;
+					await this.checkCredential();
+					this.store.set(this.projection());
+				}
+			}
+
+			inject() {
+				return {
+					hooks: { antigravityCard: this.store },
+					setDraftToken: (val) => this.setDraftToken(val),
+					setDraftBaseUrl: (val) => this.setDraftBaseUrl(val),
+					setDraftReportEndpoint: (val) => this.setDraftReportEndpoint(val),
+					setDraftReportClientId: (val) => this.setDraftReportClientId(val),
+					setDraftReportSecret: (val) => this.setDraftReportSecret(val),
+					setDraftReportEnabled: (val) => this.setDraftReportEnabled(val),
+					setDraftEnable1MMode: (val) => this.setDraftEnable1MMode(val),
+					save: () => this.save(),
+					discard: () => this.discard()
+				};
+			}
+		}
+
+		const inject = [
+			"slots",
+			"locale",
+			"configForms",
+			"remote",
+			"remote.credentials"
+		];
+
+		function apply(ctx) {
+			const t = ctx.locale.bind(NS);
+			ctx.effect(() => ctx.locale.register(NS, { zh, en }), "llm-antigravity: locales");
+
+			const controller = new AntigravityCardController(
+				(ctx.configForms ? ctx.configForms.get(NS) : ctx.settingsScope?.bind({ namespace: NS })),
+				ctx
+			);
+
+			try {
+				if (ctx.remote && typeof ctx.remote.$on === "function") {
+					ctx.effect(() => ctx.remote.$on("credentials/reference-updated", (ref) => {
+						if (ref === TOKEN_REF) controller.checkCredential();
+					}), "llm-antigravity: credential update watcher (ref)");
+
+					ctx.effect(() => ctx.remote.$on("credentials/updated", (ref) => {
+						if (ref === TOKEN_REF) controller.checkCredential();
+					}), "llm-antigravity: credential update watcher");
+				}
+			} catch (e) {
+				console.warn("[antigravity] remote watcher attach error:", e);
+			}
+
+			if (typeof ctx.on === "function") {
+				ctx.effect(() => ctx.on("connection/reset", () => {
+					controller.checkCredential();
+				}), "llm-antigravity: connection reset watcher");
+			}
+
+			function AntigravitySection(props) {
+				const { t } = props;
+				return (0, react_jsx_runtime.jsxs)("div", {
+					style: {
+						maxWidth: 960,
+						color: "var(--dsw-alias-label-primary, #111827)",
+						display: "flex",
+						flexDirection: "column",
+						gap: 16
+					},
+					children: [
+						(0, react_jsx_runtime.jsxs)("div", {
+							children: [
+								(0, react_jsx_runtime.jsx)("h2", { style: { margin: 0, fontSize: 18, fontWeight: 600 }, children: (props.t || t)("title") }),
+								(0, react_jsx_runtime.jsx)("p", { style: { margin: "4px 0 0", fontSize: 13, color: "var(--dsw-alias-label-tertiary, #6b7280)" }, children: (props.t || t)("description") })
+							]
+						}),
+						(0, react_jsx_runtime.jsx)(AntigravityCard, { ...props, isSection: true })
+					]
+				});
+			}
+
+			
+		function AntigravityPluginItem(props) {
+			const state = props.useAntigravityCard ? props.useAntigravityCard((s) => s) : null;
+			if (props.view === "summary") {
+				if (state && state.accounts && state.accounts.length > 0) {
+					const activeAcc = state.accounts.find((a) => a.active);
+					const count = state.accounts.length;
+					const email = activeAcc && activeAcc.email ? ` (${activeAcc.email})` : '';
+					return `账号池就绪: ${count} 个账号${email} · 智能轮询与代理分流`;
+				}
+				const desc = typeof props.t === "function" ? props.t("description") : null;
+				return desc || "Google AI Pro 账号聚合调度与 Antigravity 模型服务。";
+			}
+			return (0, react_jsx_runtime.jsx)(AntigravityCard, { ...props, isSection: true });
+		}
+
+			const searchSelectorScope = ctx.configForms ? ctx.configForms.get("web-search-selector") : ctx.settingsScope?.bind({ namespace: "web-search-selector" });
+			const webSearchScope = ctx.configForms ? ctx.configForms.get("web-search-antigravity") : ctx.settingsScope?.bind({ namespace: "web-search-antigravity" });
+
+			ctx.slots.inject("plugins.bundle.config", () => ctx.slots.register({
+				name: "plugins.bundle.config",
+				key: "dsh-llm-antigravity",
+				locale: NS,
+				inject: () => ({
+					...controller.inject(),
+					t,
+					searchSelectorScope,
+					webSearchScope
+				})
+			}, AntigravityPluginItem));
+
+			ctx.slots.inject("plugins.row.config", () => ctx.slots.register({
+				name: "plugins.row.config",
+				key: "dsh-llm-antigravity#llm-antigravity",
+				locale: NS,
+				inject: () => ({
+					...controller.inject(),
+					t,
+					searchSelectorScope,
+					webSearchScope
+				})
+			}, AntigravityPluginItem));
+		}
+
+		exports.apply = apply;
+		exports.inject = inject;
+		return module.exports;
+	};
+
+	if (typeof window !== "undefined" && window.__ModuleLoader__) {
+		window.__ModuleLoader__.load({ id: "dsh-llm-antigravity", factory });
+	}
+})();

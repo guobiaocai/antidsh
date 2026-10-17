@@ -1,0 +1,100 @@
+// Web-search provider selector (host): one settings namespace that switches the
+// ctx.web searchProvider between antigravity and deepseek-official.
+//
+// Flow: the user edits `web-search.provider` in settings (Models page or a
+// settings UI). The settings service hot-publishes the change; this plugin's
+// onChange rewrites the `web` row's searchProvider in the profile
+// cordis.patch.yml; the patch HMR watcher reloads the `web` service with the
+// new provider id — so web_search switches backends live, no restart.
+//
+// Host-plane plugin (registered in cordis.patch.yml) so it has Node fs access;
+// dynamic Cordis plugins cannot touch the filesystem.
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import z from '@deepseek-ai/schemastery'
+
+const name = 'web-search-selector'
+const inject = ['web']
+const NS = 'web-search-selector'
+const PROVIDERS = ['antigravity', 'deepseek-official']
+
+function resolvePatchPath(ctx) {
+  if (ctx.baseUrl) {
+    try {
+      return fileURLToPath(new URL('cordis.patch.yml', ctx.baseUrl))
+    } catch {}
+  }
+  return path.resolve(import.meta.dirname, '../../../cordis.patch.yml')
+}
+
+function currentProviderFromPatch(patchPath) {
+  try {
+    const text = fs.readFileSync(patchPath, 'utf8')
+    const m = text.match(/searchProvider:\s*(\S+)/)
+    return m ? m[1] : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function applyProviderToPatch(patchPath, provider) {
+  const text = fs.readFileSync(patchPath, 'utf8')
+  const next = text.replace(/searchProvider:\s*\S+/, `searchProvider: ${provider}`)
+  if (next === text) {
+    throw new Error(`web-search-selector: no "searchProvider:" line found in ${patchPath}`)
+  }
+  fs.writeFileSync(patchPath, next)
+}
+
+const Config = z.object({
+  provider: z.union(PROVIDERS).default('antigravity'),
+})
+
+function apply(ctx, config) {
+  const patchPath = resolvePatchPath(ctx)
+  const initialFromPatch = currentProviderFromPatch(patchPath) ?? 'antigravity'
+  const effectiveConfig = {
+    provider: initialFromPatch,
+    ...config,
+  }
+  let readSection = () => effectiveConfig
+
+  const syncProvider = (provider) => {
+    if (provider !== undefined && PROVIDERS.includes(provider)) {
+      if (ctx.web) {
+        ctx.web.searchProviderId = provider
+      }
+      process.env.DSH_WEB_SEARCH_PROVIDER = provider
+      const current = currentProviderFromPatch(patchPath)
+      if (current !== provider) {
+        try {
+          applyProviderToPatch(patchPath, provider)
+          ctx.logger.info(`web-search-selector: searchProvider -> ${provider} (patch reloaded via HMR)`)
+        } catch (error) {
+          ctx.logger.error('web-search-selector: failed to write patch', error)
+        }
+      }
+    }
+  }
+
+  // Ensure in-memory web service matches initial patch provider
+  if (ctx.web && initialFromPatch) {
+    ctx.web.searchProviderId = initialFromPatch
+  }
+
+  ctx.inject(['settings'], (settingsCtx) => {
+    settingsCtx.settings.installSection(ctx, NS, Config, effectiveConfig, {
+      setSource: (source) => {
+        readSection = source
+      },
+      onChange: () => {
+        const section = readSection() ?? {}
+        const provider = section.provider ?? initialFromPatch
+        syncProvider(provider)
+      },
+    })
+  })
+}
+
+export { Config, PROVIDERS, apply, inject, name }
