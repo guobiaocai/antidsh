@@ -195,39 +195,50 @@ async function antigravityFetch(url, options = {}, proxyUrl = null) {
 // fetchAvailableModels; the wire `model` field passes options.model through.
 // ---------------------------------------------------------------------------
 const DEFAULT_MODELS = [
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', contextWindow: 128_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', contextWindow: 128_000, maxTokens: 65535, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', contextWindow: 128_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-2.5-flash-thinking', name: 'Gemini 2.5 Flash Thinking', contextWindow: 128_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-3-flash', name: 'Gemini 3 Flash', contextWindow: 128_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-3-flash-agent', name: 'Gemini 3 Flash Agent', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-3.1-pro-high', name: 'Gemini 3.1 Pro High', contextWindow: 128_000, maxTokens: 65535, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-3.1-pro-low', name: 'Gemini 3.1 Pro Low', contextWindow: 128_000, maxTokens: 65535, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite', contextWindow: 128_000, maxTokens: 16384, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-3.1-flash-image', name: 'Gemini 3.1 Flash Image', contextWindow: 128_000, maxTokens: 16384, inputModalities: ['text', 'image', 'video'] },
-  { id: 'gemini-3.5-flash-extra-low', name: 'Gemini 3.5 Flash Extra Low', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', contextWindow: 1_048_576, maxTokens: 65535, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-3.5-flash-low', name: 'Gemini 3.5 Flash Low', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-3.6-flash-high', name: 'Gemini 3.6 Flash High', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-3.6-flash-medium', name: 'Gemini 3.6 Flash Medium', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-3.6-flash-low', name: 'Gemini 3.6 Flash Low', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-3.6-flash-tiered', name: 'Gemini 3.6 Flash Tiered', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-3.7-flash-thinking', name: 'Gemini 3.7 Flash Thinking', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-3.7-flash-high', name: 'Gemini 3.7 Flash High', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-3.7-flash-medium', name: 'Gemini 3.7 Flash Medium', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-3.7-flash-low', name: 'Gemini 3.7 Flash Low', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-3.7-flash-tiered', name: 'Gemini 3.7 Flash Tiered', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
-  { id: 'gemini-3.8-flash-thinking', name: 'Gemini 3.8 Flash Thinking', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  // Gemini 3.8 Series
   { id: 'gemini-3.8-flash-high', name: 'Gemini 3.8 Flash High', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
   { id: 'gemini-3.8-flash-medium', name: 'Gemini 3.8 Flash Medium', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
   { id: 'gemini-3.8-flash-low', name: 'Gemini 3.8 Flash Low', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
   { id: 'gemini-3.8-flash-tiered', name: 'Gemini 3.8 Flash Tiered', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.8-flash-thinking', name: 'Gemini 3.8 Flash Thinking', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+
+  // Gemini 3.7 Series
+  { id: 'gemini-3.7-flash-high', name: 'Gemini 3.7 Flash High', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.7-flash-medium', name: 'Gemini 3.7 Flash Medium', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.7-flash-low', name: 'Gemini 3.7 Flash Low', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.7-flash-tiered', name: 'Gemini 3.7 Flash Tiered', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.7-flash-thinking', name: 'Gemini 3.7 Flash Thinking', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+
+  // Gemini 3.6 & 3.5 Series
+  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', contextWindow: 1_048_576, maxTokens: 65535, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.5-flash-low', name: 'Gemini 3.5 Flash Low', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.5-flash-extra-low', name: 'Gemini 3.5 Flash Extra Low', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.6-flash-high', name: 'Gemini 3.6 Flash High', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.6-flash-medium', name: 'Gemini 3.6 Flash Medium', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.6-flash-low', name: 'Gemini 3.6 Flash Low', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.6-flash-tiered', name: 'Gemini 3.6 Flash Tiered', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+
+  // Gemini 3.0 / Pro & Special
+  { id: 'gemini-3-flash', name: 'Gemini 3 Flash', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3-flash-agent', name: 'Gemini 3 Flash Agent', contextWindow: 256_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
   { id: 'gemini-pro-agent', name: 'Gemini Pro Agent', contextWindow: 128_000, maxTokens: 65535, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.1-pro-high', name: 'Gemini 3.1 Pro High', contextWindow: 128_000, maxTokens: 65535, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.1-pro-low', name: 'Gemini 3.1 Pro Low', contextWindow: 128_000, maxTokens: 65535, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite', contextWindow: 128_000, maxTokens: 16384, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-3.1-flash-image', name: 'Gemini 3.1 Flash Image', contextWindow: 65536, maxTokens: 65536, inputModalities: ['text', 'image', 'video'] },
+
+  // Gemini 2.5 Series
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', contextWindow: 128_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', contextWindow: 128_000, maxTokens: 65535, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', contextWindow: 128_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+  { id: 'gemini-2.5-flash-thinking', name: 'Gemini 2.5 Flash Thinking', contextWindow: 128_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
+
+  // Frontier & Third-Party Models
   { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', contextWindow: 160_000, maxTokens: 64000, inputModalities: ['text', 'image', 'video'] },
   { id: 'claude-opus-4-6-thinking', name: 'Claude Opus 4.6 Thinking', contextWindow: 160_000, maxTokens: 64000, inputModalities: ['text', 'image', 'video'] },
-  { id: 'gpt-oss-120b-medium', name: 'GPT-OSS 120B Medium', contextWindow: 80_000, maxTokens: 16384, inputModalities: ['text'] },
+  { id: 'gpt-oss-120b-medium', name: 'GPT-OSS 120B Medium', contextWindow: 80_000, maxTokens: 32768, inputModalities: ['text'] },
 ]
 
 const catalogModel = z.object({
@@ -2784,29 +2795,62 @@ function sanitizeForOpenApi(schema) {
 }
 
 const MODEL_ALIASES = {
+  // Gemini 3.8
+  'gemini-3.8': 'gemini-3.8-flash-high',
+  'gemini-3.8-flash': 'gemini-3.8-flash-high',
+  'gemini-3.8-flash-thinking': 'gemini-3.8-flash-high',
+
+  // Gemini 3.7
+  'gemini-3.7': 'gemini-3.7-flash-high',
+  'gemini-3.7-flash': 'gemini-3.7-flash-high',
+  'gemini-3.7-flash-thinking': 'gemini-3.7-flash-high',
+
+  // Gemini 3.6 & 3.5
+  'gemini-3.6': 'gemini-3.6-flash-high',
+  'gemini-3.6-flash': 'gemini-3.6-flash-high',
+  'gemini-3.5': 'gemini-3.5-flash-lite',
+  'gemini-3.5-flash': 'gemini-3.5-flash-lite',
+
+  // Gemini 3.0 & Pro
+  'gemini-3': 'gemini-3-flash',
+  'gemini-3.0-flash': 'gemini-3-flash',
   'gemini-3.1-pro-high': 'gemini-pro-agent',
+  'gemini-3.1-pro-low': 'gemini-pro-agent',
   'gemini-3.1-pro': 'gemini-pro-agent',
   'gemini-3-pro': 'gemini-pro-agent',
-  'gemini-3.7-flash-thinking': 'gemini-3.7-flash-high',
-  'gemini-3.8-flash-thinking': 'gemini-3.8-flash-high',
-  'gemini-3.8-flash': 'gemini-3.8-flash-high',
-  'gemini-3.7-flash': 'gemini-3.7-flash-high',
-  'gemini-3.6-flash': 'gemini-3.6-flash-high',
-  'gemini-3.5-flash': 'gemini-3.5-flash-lite',
+
+  // Gemini 2.5
+  'gemini-2.5': 'gemini-2.5-flash',
+
+  // Claude Opus family
   'claude-opus': 'claude-opus-4-6-thinking',
   'claude-opus-4-6': 'claude-opus-4-6-thinking',
   'claude-opus-4-5': 'claude-opus-4-6-thinking',
   'claude-opus-4-5-thinking': 'claude-opus-4-6-thinking',
   'claude-3-opus': 'claude-opus-4-6-thinking',
   'claude-3-5-opus': 'claude-opus-4-6-thinking',
+  'claude-3.5-opus': 'claude-opus-4-6-thinking',
   'opus': 'claude-opus-4-6-thinking',
+
+  // Claude Sonnet & Haiku family
   'claude-sonnet': 'claude-sonnet-4-6',
   'claude-sonnet-4-5': 'claude-sonnet-4-6',
   'claude-3-5-sonnet': 'claude-sonnet-4-6',
+  'claude-3.5-sonnet': 'claude-sonnet-4-6',
   'claude-3-7-sonnet': 'claude-sonnet-4-6',
+  'claude-3.7-sonnet': 'claude-sonnet-4-6',
+  'claude-3-7-sonnet-thinking': 'claude-sonnet-4-6',
+  'claude-3.7-sonnet-thinking': 'claude-sonnet-4-6',
   'claude-haiku-4-5': 'claude-sonnet-4-6',
   'claude-haiku': 'claude-sonnet-4-6',
+  'claude-3-haiku': 'claude-sonnet-4-6',
+  'claude-3.5-haiku': 'claude-sonnet-4-6',
   'sonnet': 'claude-sonnet-4-6',
+
+  // GPT-OSS
+  'gpt-oss': 'gpt-oss-120b-medium',
+  'gpt-oss-120b': 'gpt-oss-120b-medium',
+  'gpt-120b': 'gpt-oss-120b-medium',
 }
 
 function resolveCanonicalModel(modelId) {
@@ -2816,10 +2860,9 @@ function resolveCanonicalModel(modelId) {
 function maxOutputTokensLimit(model) {
   const lower = model.toLowerCase()
   if (lower.startsWith('claude') || lower === 'opus' || lower === 'sonnet') return 64000
-  if (lower.startsWith('gpt-oss-')) return 16384
+  if (lower.startsWith('gpt-oss-') || lower.startsWith('gpt-oss')) return 32768
   if (lower.includes('flash-image') || lower.includes('tab_flash_lite')) return 16384
   if (lower.includes('pro') || lower.includes('flash-lite')) return 65535
-  if (lower.includes('pro')) return 65535
   return 65536
 }
 

@@ -492,6 +492,18 @@
 		if (m.includes("3.7-flash") || m.includes("3.8-flash")) {
 			return { input: 0.75, output: 3.75, cache: 0.075 };
 		}
+		if (m.includes("3.5-flash-lite")) {
+			return { input: 0.15, output: 0.60, cache: 0.015 };
+		}
+		if (m.includes("claude-sonnet") || m.includes("sonnet")) {
+			return { input: 3.00, output: 15.00, cache: 0.30 };
+		}
+		if (m.includes("claude-opus") || m.includes("opus")) {
+			return { input: 15.00, output: 75.00, cache: 1.50 };
+		}
+		if (m.includes("gpt-oss")) {
+			return { input: 0.50, output: 2.00, cache: 0.10 };
+		}
 		return DEFAULT_FALLBACK_PRICING;
 	}
 

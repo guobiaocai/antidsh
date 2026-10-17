@@ -184,7 +184,7 @@ Accept-Encoding: gzip
 | **Gemini 3.6 / 3.5 系列** | `gemini-3.6-flash-high/medium/low/tiered`<br>`gemini-3.5-flash-low/extra-low` | 1,000,000 | 65,536 | ✅ 支持 | 稳定快速。 |
 | **Gemini 轻量/生图系列** | `gemini-3.1-flash-lite`<br>`gemini-3.1-flash-image` | 1,000,000 | 16,384 | ❌ 仅文本 | `flash-image` 为生图专用模型，支持 `generate_image` 工具；`flash-lite` 兼用于 Grounding 搜索。 |
 | **Anthropic Vertex** | `claude-sonnet-4-6`<br>`claude-opus-4-6-thinking` | 250,000 | **64,000 (硬限制)** | ✅ 支持 | **必须截断 `maxOutputTokens <= 64000`**。若发送 65,536 会触发上游 `400 INVALID_ARGUMENT` 报错。 |
-| **OpenAI Vertex** | `gpt-oss-120b-medium` | 128,000 | **16,384 (硬限制)** | ❌ **禁止携带** | **必须截断 `maxOutputTokens <= 16384` 且严禁传入 `thinkingConfig`**（否则上游返回 400）。 |
+| **OpenAI Vertex** | `gpt-oss-120b-medium` | 131,072 | **32,768 (硬限制)** | ❌ **禁止携带** | **必须截断 `maxOutputTokens <= 32768` 且严禁传入 `thinkingConfig`**（否则上游返回 400）。 |
 | **已弃用/无容量模型** | `gemini-3.1-pro-high`<br>`gemini-2.5-pro` | - | - | - | `3.1-pro-high` 已被 Google 废弃，需别名映射至 `gemini-pro-agent`；`2.5-pro` 算力已下线（返回 503）。 |
 
 ---
@@ -321,7 +321,7 @@ Antigravity 依托 Google Gemini 底层原生多模态架构，具备原生处�
 
 | 模型类别 | 代表模型 ID | 视频/音频 | 图像 (Image) | PDF 文档 | Jupyter Notebook | 文本与代码 |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Gemini 3.7 / 3.6 / 3.5 / 3.1** | `gemini-3.7-flash-*`<br>`gemini-3.1-pro-*` | **完全支持** | **完全支持** | **完全支持** | **完全支持** | **完全支持** |
+| **Gemini 3.8 / 3.7 / 3.6 / 3.5 / 3.1** | `gemini-3.8-flash-*`<br>`gemini-3.7-flash-*`<br>`gemini-3.1-pro-*` | **完全支持** | **完全支持** | **完全支持** | **完全支持** | **完全支持** |
 | **Gemini 2.5 系列** | `gemini-2.5-pro`<br>`gemini-2.5-flash` | **完全支持** | **完全支持** | **完全支持** | **完全支持** | **完全支持** |
 | **Gemini 生图专用** | `gemini-3.1-flash-image` | 不支持 | 仅输出生成 | 不支持 | 不支持 | 纯文本 Prompt |
 | **Anthropic Vertex** | `claude-sonnet-4-6`<br>`claude-opus-4-6-thinking` | 仅部分帧序列 (`video/jpeg2000`) | **完全支持** | 不支持原生 PDF (需转图) | 不支持 | **完全支持** |
