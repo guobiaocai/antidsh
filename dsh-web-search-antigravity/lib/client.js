@@ -634,6 +634,23 @@
 				locale: NS,
 				inject: () => ({ ...controller.inject(), t })
 			}, AntigravityWebSearchPluginItem));
+
+			// DSH 0.2.x: the Plugins page's "内置插件配置" section reads the
+			// `plugins.item` slot; register the card while the Host serves the
+			// `web-search-antigravity` config namespace (i.e. the plugin is live).
+			const registerWebSearchItem = () => ctx.slots.register({
+				name: "plugins.item",
+				id: "antigravity-search",
+				order: 51,
+				label: () => t("title"),
+				locale: NS,
+				inject: () => ({ ...controller.inject(), t })
+			}, AntigravityWebSearchPluginItem);
+			if (ctx.configForms && typeof ctx.configForms.whileServed === "function") {
+				ctx.effect(() => ctx.configForms.whileServed([NS], () => ctx.slots.inject("plugins.item", () => registerWebSearchItem())), "web-search-antigravity: item page");
+			} else {
+				ctx.slots.inject("plugins.item", () => registerWebSearchItem());
+			}
 		}
 
 		exports.apply = apply;

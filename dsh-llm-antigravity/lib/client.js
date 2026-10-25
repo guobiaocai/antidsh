@@ -5104,6 +5104,23 @@
 					webSearchScope
 				})
 			}, AntigravityPluginItem));
+
+			// DSH 0.2.x: the Plugins page's "内置插件配置" section reads the
+			// `plugins.item` slot; register the card while the Host serves the
+			// `llm-antigravity` config namespace (i.e. the plugin is live).
+			const registerAntigravityItem = () => ctx.slots.register({
+				name: "plugins.item",
+				id: "antigravity",
+				order: 50,
+				label: () => t("title"),
+				locale: NS,
+				inject: () => ({ ...controller.inject(), t })
+			}, AntigravityPluginItem);
+			if (ctx.configForms && typeof ctx.configForms.whileServed === "function") {
+				ctx.effect(() => ctx.configForms.whileServed([NS], () => ctx.slots.inject("plugins.item", () => registerAntigravityItem())), "llm-antigravity: item page");
+			} else {
+				ctx.slots.inject("plugins.item", () => registerAntigravityItem());
+			}
 		}
 
 		exports.apply = apply;
