@@ -47,18 +47,15 @@ function applyProviderToPatch(patchPath, provider) {
   fs.writeFileSync(patchPath, next)
 }
 
+// `provider` is volatile: DSH (0.2.x) auto-generates the settings page from it
+// and live edits land through the `loader/volatile-update` event.
 const Config = z.object({
-  provider: z.union(PROVIDERS).default('antigravity'),
+  provider: z.union(PROVIDERS).default('antigravity').volatile(),
 })
 
 function apply(ctx, config) {
   const patchPath = resolvePatchPath(ctx)
   const initialFromPatch = currentProviderFromPatch(patchPath) ?? 'antigravity'
-  const effectiveConfig = {
-    provider: initialFromPatch,
-    ...config,
-  }
-  let readSection = () => effectiveConfig
 
   const syncProvider = (provider) => {
     if (provider !== undefined && PROVIDERS.includes(provider)) {
@@ -83,17 +80,12 @@ function apply(ctx, config) {
     ctx.web.searchProviderId = initialFromPatch
   }
 
-  ctx.inject(['settings'], (settingsCtx) => {
-    settingsCtx.settings.installSection(ctx, NS, Config, effectiveConfig, {
-      setSource: (source) => {
-        readSection = source
-      },
-      onChange: () => {
-        const section = readSection() ?? {}
-        const provider = section.provider ?? initialFromPatch
-        syncProvider(provider)
-      },
-    })
+  // Volatile config fields resolve to accessor wrappers; a settings-page edit
+  // rewrites the `web` row's searchProvider in the profile patch, whose HMR
+  // watcher reloads the web service live (no restart).
+  const unwrap = (value) => (value !== null && typeof value === 'object' && typeof value.get === 'function') ? value.get() : value
+  ctx.on?.('loader/volatile-update', () => {
+    syncProvider(unwrap(config.provider) ?? initialFromPatch)
   })
 }
 

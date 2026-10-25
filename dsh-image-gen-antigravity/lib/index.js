@@ -230,22 +230,29 @@ async function executeImageGenWithRetry(baseURL, accessToken, reqBody, maxRetrie
   throw new Error('Image generation failed after maximum retries')
 }
 
+// Fields marked `.volatile()` are live-editable: DSH (0.2.x) auto-generates the
+// plugin settings page from the volatile subset of this schema.
 const Config = z.object({
-  refreshTokenEnv: z.string().role('credential-ref').default('ANTIGRAVITY_REFRESH_TOKEN'),
-  model: z.string().default('gemini-3.1-flash-image'),
-  baseURL: z.string().default(DEFAULT_BASE_URL),
-  timeoutMs: z.number().default(120_000),
+  refreshTokenEnv: z.string().role('credential-ref').default('ANTIGRAVITY_REFRESH_TOKEN').volatile(),
+  model: z.string().default('gemini-3.1-flash-image').volatile(),
+  baseURL: z.string().default(DEFAULT_BASE_URL).volatile(),
+  timeoutMs: z.number().default(120_000).volatile(),
 })
 
 function apply(ctx, config) {
-  let current = () => config
-  ctx.inject(['settings'], (settingsCtx) => {
-    settingsCtx.settings.installSection(ctx, NS, Config, config, {
-      setSource: (source) => {
-        current = source
-      },
-      onChange: () => {},
-    })
+  // Volatile config fields resolve to accessor wrappers; unwrap them into a
+  // plain snapshot and rebuild it on live settings edits (DSH 0.2.x).
+  const unwrap = (value) => (value !== null && typeof value === 'object' && typeof value.get === 'function') ? value.get() : value
+  const buildSnapshot = () => ({
+    refreshTokenEnv: unwrap(config.refreshTokenEnv),
+    model: unwrap(config.model),
+    baseURL: unwrap(config.baseURL),
+    timeoutMs: unwrap(config.timeoutMs),
+  })
+  let snapshot = buildSnapshot()
+  let current = () => snapshot
+  ctx.on?.('loader/volatile-update', () => {
+    snapshot = buildSnapshot()
   })
 
   // Register HTTP static image route on webServer when available
@@ -363,7 +370,7 @@ function apply(ctx, config) {
         aspectRatio: value.aspectRatio,
       }),
     },
-    timeoutMs: config?.timeoutMs ?? 120_000,
+    timeoutMs: current()?.timeoutMs ?? 120_000,
     isConcurrencySafe: () => true,
     async execute(args, exec) {
       const options = current() ?? {}

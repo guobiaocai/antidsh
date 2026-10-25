@@ -291,19 +291,21 @@ async function fetchPageTitle(url, proxyUrl = null, timeoutMs = 2500, signal = u
   return null
 }
 
+// Fields marked `.volatile()` are live-editable: DSH (0.2.x) auto-generates the
+// plugin settings page from the volatile subset of this schema.
 const Config = z.object({
-  refreshTokenEnv: z.string().role('credential-ref').default('ANTIGRAVITY_REFRESH_TOKEN'),
+  refreshTokenEnv: z.string().role('credential-ref').default('ANTIGRAVITY_REFRESH_TOKEN').volatile(),
   clientId: z.string().default(CLIENT_ID),
   clientSecret: z.string().default(CLIENT_SECRET),
-  baseURL: z.string().default(DEFAULT_BASE_URL),
-  model: z.string().default('gemini-3.7-flash-high'),
-  includeContent: z.boolean().default(false),
-  includeSnippets: z.boolean().default(false),
-  resolveRedirects: z.boolean().default(true),
-  dropUnresolvedRedirects: z.boolean().default(false),
-  redirectTimeoutMs: z.number().default(3000),
-  fetchPageTitles: z.boolean().default(true),
-  pageTitleTimeoutMs: z.number().default(2500),
+  baseURL: z.string().default(DEFAULT_BASE_URL).volatile(),
+  model: z.string().default('gemini-3.7-flash-high').volatile(),
+  includeContent: z.boolean().default(false).volatile(),
+  includeSnippets: z.boolean().default(false).volatile(),
+  resolveRedirects: z.boolean().default(true).volatile(),
+  dropUnresolvedRedirects: z.boolean().default(false).volatile(),
+  redirectTimeoutMs: z.number().default(3000).volatile(),
+  fetchPageTitles: z.boolean().default(true).volatile(),
+  pageTitleTimeoutMs: z.number().default(2500).volatile(),
 })
 
 const name = 'web-search-antigravity'
@@ -559,14 +561,27 @@ function resolveOptions(ctx, config) {
 }
 
 function apply(ctx, config) {
-  let current = () => config
-  ctx.inject(['settings'], (settingsCtx) => {
-    settingsCtx.settings.installSection(ctx, NS, Config, config, {
-      setSource: (source) => {
-        current = source
-      },
-      onChange: () => {},
-    })
+  // Volatile config fields resolve to accessor wrappers; unwrap them into a
+  // plain snapshot and rebuild it on live settings edits (DSH 0.2.x).
+  const unwrap = (value) => (value !== null && typeof value === 'object' && typeof value.get === 'function') ? value.get() : value
+  const buildSnapshot = () => ({
+    refreshTokenEnv: unwrap(config.refreshTokenEnv),
+    clientId: unwrap(config.clientId),
+    clientSecret: unwrap(config.clientSecret),
+    baseURL: unwrap(config.baseURL),
+    model: unwrap(config.model),
+    includeContent: unwrap(config.includeContent),
+    includeSnippets: unwrap(config.includeSnippets),
+    resolveRedirects: unwrap(config.resolveRedirects),
+    dropUnresolvedRedirects: unwrap(config.dropUnresolvedRedirects),
+    redirectTimeoutMs: unwrap(config.redirectTimeoutMs),
+    fetchPageTitles: unwrap(config.fetchPageTitles),
+    pageTitleTimeoutMs: unwrap(config.pageTitleTimeoutMs),
+  })
+  let snapshot = buildSnapshot()
+  let current = () => snapshot
+  ctx.on?.('loader/volatile-update', () => {
+    snapshot = buildSnapshot()
   })
   ctx.web.registerSearchProvider(new AntigravitySearchProvider(() => resolveOptions(ctx, current())))
 }

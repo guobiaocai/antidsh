@@ -250,25 +250,29 @@ const catalogModel = z.object({
   inputModalities: z.array(z.union([z.const('text'), z.const('image'), z.const('video'), z.const('audio'), z.const('pdf'), z.const('document'), z.const('file')])),
 })
 
+// Fields marked `.volatile()` are live-editable: DSH (0.2.x) auto-generates the
+// plugin settings page from the volatile subset of this schema, and edits are
+// hot-applied through the `loader/volatile-update` event (values arrive as
+// accessor wrappers, unwrapped by buildSnapshot() in apply()).
 const Config = z.object({
-  refreshTokenEnv: z.string().role('credential-ref').default('ANTIGRAVITY_REFRESH_TOKEN'),
+  refreshTokenEnv: z.string().role('credential-ref').default('ANTIGRAVITY_REFRESH_TOKEN').volatile(),
   clientId: z.string().default(CLIENT_ID),
   clientSecret: z.string().default(CLIENT_SECRET),
-  baseURL: z.string().default('https://daily-cloudcode-pa.googleapis.com/v1internal'),
-  baseURLs: z.array(z.string()).default(DEFAULT_BASE_URLS),
-  project: z.string().default(''),
-  models: z.array(catalogModel).default(DEFAULT_MODELS),
-  enable1MMode: z.boolean().default(false),
-  defaultContextWindow: z.number().step(1).min(1).default(DEFAULT_CONTEXT_WINDOW),
-  maxTokens: z.number().step(1).min(1).default(DEFAULT_MAX_TOKENS),
-  streamIdleTimeoutMs: z.number().min(Number.MIN_VALUE).max(MAX_TIMER_DELAY_MS).default(DEFAULT_STREAM_IDLE_TIMEOUT_MS),
-  retryPolicy: RetryPolicySchema,
-  reportEndpoint: z.string().default(''),
-  reportSecret: z.string().default(''),
-  reportClientId: z.string().default('dsh-antigravity'),
-  reportEnabled: z.boolean().default(true),
-  quotaSyncIntervalMs: z.number().default(300_000),
-  quotaSyncEnabled: z.boolean().default(true),
+  baseURL: z.string().default('https://daily-cloudcode-pa.googleapis.com/v1internal').volatile(),
+  baseURLs: z.array(z.string()).default(DEFAULT_BASE_URLS).volatile(),
+  project: z.string().default('').volatile(),
+  models: z.array(catalogModel).default(DEFAULT_MODELS).volatile(),
+  enable1MMode: z.boolean().default(false).volatile(),
+  defaultContextWindow: z.number().step(1).min(1).default(DEFAULT_CONTEXT_WINDOW).volatile(),
+  maxTokens: z.number().step(1).min(1).default(DEFAULT_MAX_TOKENS).volatile(),
+  streamIdleTimeoutMs: z.number().min(Number.MIN_VALUE).max(MAX_TIMER_DELAY_MS).default(DEFAULT_STREAM_IDLE_TIMEOUT_MS).volatile(),
+  retryPolicy: RetryPolicySchema.volatile(),
+  reportEndpoint: z.string().default('').volatile(),
+  reportSecret: z.string().default('').volatile(),
+  reportClientId: z.string().default('dsh-antigravity').volatile(),
+  reportEnabled: z.boolean().default(true).volatile(),
+  quotaSyncIntervalMs: z.number().default(300_000).volatile(),
+  quotaSyncEnabled: z.boolean().default(true).volatile(),
 })
 
 // ---------------------------------------------------------------------------
@@ -3539,7 +3543,32 @@ function resolveAdapterOptions(config, environment) {
 }
 
 function apply(ctx, config) {
-  let current = () => config
+  // Volatile config fields resolve to accessor wrappers; unwrap them into a
+  // plain snapshot and rebuild it whenever a settings-page edit lands
+  // (loader/volatile-update). Non-volatile fields pass through untouched.
+  const unwrap = (value) => (value !== null && typeof value === 'object' && typeof value.get === 'function') ? value.get() : value
+  const buildSnapshot = () => ({
+    refreshTokenEnv: unwrap(config.refreshTokenEnv),
+    clientId: unwrap(config.clientId),
+    clientSecret: unwrap(config.clientSecret),
+    baseURL: unwrap(config.baseURL),
+    baseURLs: unwrap(config.baseURLs),
+    project: unwrap(config.project),
+    models: unwrap(config.models),
+    enable1MMode: unwrap(config.enable1MMode),
+    defaultContextWindow: unwrap(config.defaultContextWindow),
+    maxTokens: unwrap(config.maxTokens),
+    streamIdleTimeoutMs: unwrap(config.streamIdleTimeoutMs),
+    retryPolicy: unwrap(config.retryPolicy),
+    reportEndpoint: unwrap(config.reportEndpoint),
+    reportSecret: unwrap(config.reportSecret),
+    reportClientId: unwrap(config.reportClientId),
+    reportEnabled: unwrap(config.reportEnabled),
+    quotaSyncIntervalMs: unwrap(config.quotaSyncIntervalMs),
+    quotaSyncEnabled: unwrap(config.quotaSyncEnabled),
+  })
+  let snapshot = buildSnapshot()
+  let current = () => snapshot
   let lastRaw
   let lastGood
   const options = () => {
@@ -4053,13 +4082,11 @@ function apply(ctx, config) {
     registration.replace([PROVIDER])
     registeredPolicy = policy
   }
-  ctx.inject(['settings'], (settingsCtx) => {
-    settingsCtx.settings.installSection(ctx, NS, Config, config, {
-      setSource: (source) => {
-        current = source
-      },
-      onChange: ensureRegistrationFacts,
-    })
+  // DSH 0.2.x: the settings service auto-generates the plugin settings page
+  // from the volatile subset of Config; live edits land through this event.
+  ctx.on?.('loader/volatile-update', () => {
+    snapshot = buildSnapshot()
+    ensureRegistrationFacts()
   })
 }
 
