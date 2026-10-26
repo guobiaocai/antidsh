@@ -3191,6 +3191,8 @@ async function httpError(response, context) {
  * already excluded by the family prefix.
  */
 const LIVE_MODEL_FAMILY = /^(gemini|claude|gpt)[-.]/i
+/** Max staleness of the derived live model list before a background refresh. */
+const LIVE_MODELS_REFRESH_MS = 15 * 60 * 1000
 function isListableLiveModel(id) {
   return typeof id === 'string'
     && LIVE_MODEL_FAMILY.test(id)
@@ -3211,7 +3213,9 @@ class AntigravityAdapter extends LlmAdapter {
     this.project = undefined
     this.projectAccessToken = undefined
     this.lastRefreshToken = undefined
-    this.lastLiveModels = undefined
+    this.liveModels = undefined
+    this.liveModelsDerivedAt = 0
+    this.liveModelsRefresh = null
   }
 
   resetRuntimeState() {
@@ -3245,6 +3249,12 @@ class AntigravityAdapter extends LlmAdapter {
    * generation models (e.g. gemini-3.1-flash-image) and entries Google
    * marks as disabled are excluded. Falls back to the configured catalog
    * when the live listing is unavailable.
+   *
+   * Performance: strictly non-blocking (stale-while-revalidate). Calls
+   * serve the last known listing (or the catalog) immediately and derive
+   * from the quota service's cache for free whenever the panel refreshed
+   * it; actual network refreshes happen in the background, deduped, and
+   * never re-run more than one upstream pass at a time.
    */
   async listModels(provider) {
     const options = this.config.options()
@@ -3255,39 +3265,72 @@ class AntigravityAdapter extends LlmAdapter {
       ...(description === undefined ? {} : { description }),
       inputModalities: inputModalitiesOf(id),
     })
-    const fallback = () => options.models.map((model) => mapEntry(model.id, model.name ?? model.id, model.description))
-    try {
-      const accessToken = await this.ensureAccessToken()
-      const project = await this.ensureProject(accessToken)
-      const quota = await Promise.race([
-        this.quotaService?.getQuota(accessToken, options.baseURL, project, false, this.getActiveProxy()),
-        new Promise((resolve) => setTimeout(() => resolve(null), 4000)),
-      ])
-      const liveModels = (quota?.models ?? [])
-        .map((m) => ({ id: m.id, displayName: m.displayName }))
-        .filter((m) => isListableLiveModel(m.id))
-      if (liveModels.length > 0) {
-        this.lastLiveModels = liveModels
-        return liveModels.map((m) => {
-          const known = options.models.find((entry) => entry.id === m.id)
-          return mapEntry(m.id, known?.name ?? m.displayName, known?.description)
-        })
+    const catalog = new Map(options.models.map((model) => [model.id, model]))
+    // Free sync: fold in a newer quota-cache listing without any network.
+    this.deriveLiveModelsFromQuotaCache()
+    const live = this.liveModels
+    if (live !== undefined && live.length > 0) {
+      // Opportunistic background refresh when the listing gets stale.
+      if (Date.now() - this.liveModelsDerivedAt > LIVE_MODELS_REFRESH_MS) {
+        this.refreshLiveModels().catch(() => {})
       }
-      if (this.lastLiveModels && this.lastLiveModels.length > 0) {
-        return this.lastLiveModels.map((m) => {
-          const known = options.models.find((entry) => entry.id === m.id)
-          return mapEntry(m.id, known?.name ?? m.displayName, known?.description)
-        })
-      }
-    } catch {
-      // No usable credential or upstream hiccup: serve the catalog silently.
+      return live.map((m) => {
+        const known = catalog.get(m.id)
+        return mapEntry(m.id, known?.name ?? m.displayName, known?.description)
+      })
     }
-    return fallback()
+    // Cold start: serve the catalog now, warm the live listing in background.
+    this.refreshLiveModels().catch(() => {})
+    return options.models.map((model) => mapEntry(model.id, model.name ?? model.id, model.description))
+  }
+
+  /**
+   * Fold the quota service's cached listing into the live model list without
+   * network traffic. @returns whether a newer listing was folded in.
+   */
+  deriveLiveModelsFromQuotaCache() {
+    const cached = this.quotaService?.cache
+    if (!cached || !Array.isArray(cached.models)) return false
+    const updatedAt = Date.parse(cached.updatedAt ?? '') || 0
+    if (updatedAt !== 0 && updatedAt <= this.liveModelsDerivedAt) return false
+    const live = cached.models
+      .map((m) => ({ id: m.id, displayName: m.displayName }))
+      .filter((m) => isListableLiveModel(m.id))
+    this.liveModelsDerivedAt = updatedAt || Date.now()
+    if (live.length > 0) {
+      this.liveModels = live
+      return true
+    }
+    return false
+  }
+
+  /**
+   * Refresh the live model listing in the background. Reuses the quota
+   * cache when it is fresh; otherwise performs one upstream pass. Concurrent
+   * calls share the in-flight promise; the promise never rejects.
+   */
+  refreshLiveModels() {
+    if (this.liveModelsRefresh) return this.liveModelsRefresh
+    this.liveModelsRefresh = (async () => {
+      try {
+        if (this.deriveLiveModelsFromQuotaCache()) return
+        const options = this.config.options()
+        const accessToken = await this.ensureAccessToken()
+        const project = await this.ensureProject(accessToken)
+        await this.quotaService?.getQuota(accessToken, options.baseURL, project, false, this.getActiveProxy())
+        this.deriveLiveModelsFromQuotaCache()
+      } catch {
+        // Keep the previous listing (or catalog fallback); retried lazily.
+      } finally {
+        this.liveModelsRefresh = null
+      }
+    })()
+    return this.liveModelsRefresh
   }
 
   resolveModel(provider, model, _signal) {
     const connection = this.config.options()
-    const live = (this.lastLiveModels ?? []).find((entry) => entry.id === model)
+    const live = (this.liveModels ?? []).find((entry) => entry.id === model)
     const configured = connection.models.find((entry) => entry.id === model)
     const modalities = (configured?.inputModalities !== undefined && configured.inputModalities.length > 0)
       ? configured.inputModalities
