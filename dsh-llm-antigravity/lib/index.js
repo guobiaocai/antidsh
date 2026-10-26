@@ -2804,6 +2804,11 @@ const MODEL_ALIASES = {
   'gemini-3.8-flash': 'gemini-3.8-flash-high',
   'gemini-3.8-flash-thinking': 'gemini-3.8-flash-high',
 
+  // Gemini 4 Argon (separate weekly quota group)
+  'gemini-4-argon': 'gemini-4-argon-high',
+  'gemini-4': 'gemini-4-argon-high',
+  'argon': 'gemini-4-argon-high',
+
   // Gemini 3.7
   'gemini-3.7': 'gemini-3.7-flash-high',
   'gemini-3.7-flash': 'gemini-3.7-flash-high',

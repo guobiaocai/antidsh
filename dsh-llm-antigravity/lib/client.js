@@ -126,6 +126,7 @@
 		periodAll: "All Time",
 		groupAll: "All Groups",
 		groupGemini: "Gemini Group",
+		groupArgon: "Gemini 4 Argon Group",
 		group3p: "Claude / GPT Group",
 		windowNotice5h: "5-Hour backward window based on quota reset time",
 		windowNoticeWeekly: "7-Day (1-Week) backward window based on quota reset time",
@@ -348,6 +349,7 @@
 		periodAll: "全部历史",
 		groupAll: "全部模型组",
 		groupGemini: "Gemini 额度组",
+		groupArgon: "Gemini 4 Argon 额度组",
 		group3p: "Claude / GPT 额度组",
 		windowNotice5h: "按照 5小时 额度重置时间往前倒推 5 小时统计各模型用量",
 		windowNoticeWeekly: "按照 每周 额度重置时间往前倒推 7 天 (1周) 统计各模型用量",
@@ -477,6 +479,12 @@
 		"gemini-3.1-pro-high": { input: 2.00, output: 12.00, cache: 0.20 },
 		"gemini-3.1-pro-low": { input: 2.00, output: 12.00, cache: 0.20 },
 		"gemini-pro-agent": { input: 2.00, output: 12.00, cache: 0.20 },
+		// Gemini 4 Argon (separate weekly quota group; provisional Pro-tier anchor
+		// until Google publishes official rates)
+		"gemini-4-argon-high": { input: 2.00, output: 12.00, cache: 0.20 },
+		"gemini-4-argon-medium": { input: 2.00, output: 12.00, cache: 0.20 },
+		"gemini-4-argon-low": { input: 2.00, output: 12.00, cache: 0.20 },
+		"gemini-4-argon": { input: 2.00, output: 12.00, cache: 0.20 },
 		"claude-sonnet-4-6": { input: 3.00, output: 15.00, cache: 0.30 },
 		"claude-sonnet": { input: 3.00, output: 15.00, cache: 0.30 },
 		"claude-opus-4-6-thinking": { input: 15.00, output: 75.00, cache: 1.50 },
@@ -489,6 +497,11 @@
 
 	function getFallbackPricing(modelId) {
 		const m = (modelId || "").toLowerCase();
+		if (m.includes("4-argon")) {
+			// Gemini 4 Argon family: separate weekly quota group; provisional
+			// Pro-tier anchor until Google publishes official rates.
+			return { input: 2.00, output: 12.00, cache: 0.20 };
+		}
 		if (m.includes("3.7-flash") || m.includes("3.8-flash")) {
 			return { input: 0.75, output: 3.75, cache: 0.075 };
 		}
@@ -523,6 +536,7 @@
 
 	function getModelGroup(modelId) {
 		const lower = (modelId || "").toLowerCase();
+		if (lower.includes("argon")) return "argon";
 		if (lower.startsWith("claude") || lower.startsWith("gpt") || lower.includes("3p")) return "3p";
 		return "gemini";
 	}
@@ -1279,11 +1293,13 @@
 				: quotaData;
 
 			if (effectiveValuationQuota && Array.isArray(effectiveValuationQuota.groups)) {
-				const geminiGroup = effectiveValuationQuota.groups.find(g => (g.displayName || "").toLowerCase().includes("gemini"));
+				const geminiGroup = effectiveValuationQuota.groups.find(g => (g.displayName || "").toLowerCase().includes("gemini") && !(g.displayName || "").toLowerCase().includes("argon"));
+				const argonGroup = effectiveValuationQuota.groups.find(g => (g.displayName || "").toLowerCase().includes("argon"));
 				const thirdPartyGroup = effectiveValuationQuota.groups.find(g => (g.displayName || "").toLowerCase().includes("claude") || (g.displayName || "").toLowerCase().includes("3p"));
 
 				let activeGroupObj = null;
 				if (selectedGroupFilter === "gemini") activeGroupObj = geminiGroup;
+				else if (selectedGroupFilter === "argon") activeGroupObj = argonGroup;
 				else if (selectedGroupFilter === "3p") activeGroupObj = thirdPartyGroup;
 				else activeGroupObj = geminiGroup || effectiveValuationQuota.groups[0];
 
@@ -1428,7 +1444,8 @@
 					let accBucket = null;
 					if (accQuota && Array.isArray(accQuota.groups)) {
 						let grp = accQuota.groups[0];
-						if (selectedGroupFilter === "gemini") grp = accQuota.groups.find(g => (g.displayName || "").toLowerCase().includes("gemini")) || grp;
+						if (selectedGroupFilter === "gemini") grp = accQuota.groups.find(g => (g.displayName || "").toLowerCase().includes("gemini") && !(g.displayName || "").toLowerCase().includes("argon")) || grp;
+						else if (selectedGroupFilter === "argon") grp = accQuota.groups.find(g => (g.displayName || "").toLowerCase().includes("argon")) || grp;
 						else if (selectedGroupFilter === "3p") grp = accQuota.groups.find(g => (g.displayName || "").toLowerCase().includes("claude") || (g.displayName || "").toLowerCase().includes("3p")) || grp;
 						if (grp && Array.isArray(grp.buckets)) {
 							if (activeValuationPeriod === "5h") accBucket = grp.buckets.find(b => b.window === "5h") || grp.buckets[1] || grp.buckets[0];
@@ -2939,6 +2956,7 @@
 														children: [
 															(0, react_jsx_runtime.jsx)("option", { value: "all", children: t("groupAll") }),
 															(0, react_jsx_runtime.jsx)("option", { value: "gemini", children: t("groupGemini") }),
+															(0, react_jsx_runtime.jsx)("option", { value: "argon", children: t("groupArgon") }),
 															(0, react_jsx_runtime.jsx)("option", { value: "3p", children: t("group3p") })
 														]
 													}),
