@@ -70,7 +70,17 @@ const DEFAULT_MAX_TOKENS = 65536
 const STREAM_IDLE_TIMEOUT_CODE = 'LLM_STREAM_IDLE_TIMEOUT'
 
 /**
+ * Live per-model specs observed through fetchAvailableModels (context window
+ * and output ceiling), fed by the adapter's quota-cache fold. They override
+ * the static family rules in getModelContextWindow / maxOutputTokensLimit so
+ * newly advertised generations (e.g. Claude 5.5: 1M context / 128K output)
+ * are served correctly without code changes.
+ */
+const LIVE_MODEL_SPECS = new Map()
+
+/**
  * Resolve model-specific context window bounds.
+ * - Live upstream specs (fetchAvailableModels) take precedence when present.
  * - When enable1MMode is false (default): aligned with official Antigravity checkpointer limits
  *   (Flash 256K, Pro 128K, 2.5 / Lite 128K, Claude 160K, GPT-OSS 80K).
  * - When enable1MMode is true: unlocks full 1M capacity
@@ -78,6 +88,8 @@ const STREAM_IDLE_TIMEOUT_CODE = 'LLM_STREAM_IDLE_TIMEOUT'
  */
 function getModelContextWindow(modelId, enable1MMode = false) {
   const lower = (modelId || '').toLowerCase()
+  const spec = LIVE_MODEL_SPECS.get(lower) ?? LIVE_MODEL_SPECS.get(modelId)
+  if (spec && Number.isFinite(spec.contextWindow)) return spec.contextWindow
   if (enable1MMode) {
     if (lower.startsWith('claude-')) return 250_000
     if (lower.startsWith('gpt-oss-')) return 131_072
@@ -235,9 +247,14 @@ const DEFAULT_MODELS = [
   { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', contextWindow: 128_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
   { id: 'gemini-2.5-flash-thinking', name: 'Gemini 2.5 Flash Thinking', contextWindow: 128_000, maxTokens: 65536, inputModalities: ['text', 'image', 'video', 'audio', 'document'] },
 
-  // Frontier & Third-Party Models
-  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', contextWindow: 160_000, maxTokens: 64000, inputModalities: ['text', 'image', 'video'] },
-  { id: 'claude-opus-4-6-thinking', name: 'Claude Opus 4.6 Thinking', contextWindow: 160_000, maxTokens: 64000, inputModalities: ['text', 'image', 'video'] },
+  // Frontier & Third-Party Models (Anthropic Vertex Claude 5.5 generation:
+  // 1M context / 128K output per fetchAvailableModels)
+  { id: 'claude-sonnet-5-5-high', name: 'Claude Sonnet 5.5 (High)', contextWindow: 1_000_000, maxTokens: 128000, inputModalities: ['text', 'image', 'video'] },
+  { id: 'claude-sonnet-5-5-medium', name: 'Claude Sonnet 5.5 (Medium)', contextWindow: 1_000_000, maxTokens: 128000, inputModalities: ['text', 'image', 'video'] },
+  { id: 'claude-sonnet-5-5-low', name: 'Claude Sonnet 5.5 (Low)', contextWindow: 1_000_000, maxTokens: 128000, inputModalities: ['text', 'image', 'video'] },
+  { id: 'claude-opus-5-5-high', name: 'Claude Opus 5.5 (High)', contextWindow: 1_000_000, maxTokens: 128000, inputModalities: ['text', 'image', 'video'] },
+  { id: 'claude-opus-5-5-medium', name: 'Claude Opus 5.5 (Medium)', contextWindow: 1_000_000, maxTokens: 128000, inputModalities: ['text', 'image', 'video'] },
+  { id: 'claude-opus-5-5-low', name: 'Claude Opus 5.5 (Low)', contextWindow: 1_000_000, maxTokens: 128000, inputModalities: ['text', 'image', 'video'] },
   { id: 'gpt-oss-120b-medium', name: 'GPT-OSS 120B Medium', contextWindow: 80_000, maxTokens: 32768, inputModalities: ['text'] },
 ]
 
@@ -1713,6 +1730,11 @@ class QuotaService {
               remainingFraction: fraction,
               remainingPercent: typeof fraction === 'number' ? Math.round(fraction * 1000) / 10 : undefined,
               resetTime: m.quotaInfo?.resetTime,
+              // Upstream hard bounds: maxTokens is the advertised context
+              // window, maxOutputTokens the output ceiling (e.g. Claude 5.5:
+              // 1,000,000 / 128,000). Consumed by the adapter's live specs.
+              ...(Number.isFinite(m.maxTokens) ? { contextWindow: m.maxTokens } : {}),
+              ...(Number.isFinite(m.maxOutputTokens) ? { maxOutputTokens: m.maxOutputTokens } : {}),
             }
           })
           .filter((m) => m.remainingFraction !== undefined)
@@ -2831,30 +2853,37 @@ const MODEL_ALIASES = {
   // Gemini 2.5
   'gemini-2.5': 'gemini-2.5-flash',
 
-  // Claude Opus family
-  'claude-opus': 'claude-opus-4-6-thinking',
-  'claude-opus-4-6': 'claude-opus-4-6-thinking',
-  'claude-opus-4-5': 'claude-opus-4-6-thinking',
-  'claude-opus-4-5-thinking': 'claude-opus-4-6-thinking',
-  'claude-3-opus': 'claude-opus-4-6-thinking',
-  'claude-3-5-opus': 'claude-opus-4-6-thinking',
-  'claude-3.5-opus': 'claude-opus-4-6-thinking',
-  'opus': 'claude-opus-4-6-thinking',
+  // Claude Opus family (upstream now serves the 5.5 generation; the 4.6 ids
+  // were retired — retarget every legacy alias onto the live variants)
+  'claude-opus': 'claude-opus-5-5-high',
+  'claude-opus-5-5': 'claude-opus-5-5-high',
+  'claude-opus-5-5-thinking': 'claude-opus-5-5-high',
+  'claude-opus-4-6': 'claude-opus-5-5-high',
+  'claude-opus-4-6-thinking': 'claude-opus-5-5-high',
+  'claude-opus-4-5': 'claude-opus-5-5-high',
+  'claude-opus-4-5-thinking': 'claude-opus-5-5-high',
+  'claude-3-opus': 'claude-opus-5-5-high',
+  'claude-3-5-opus': 'claude-opus-5-5-high',
+  'claude-3.5-opus': 'claude-opus-5-5-high',
+  'opus': 'claude-opus-5-5-high',
 
   // Claude Sonnet & Haiku family
-  'claude-sonnet': 'claude-sonnet-4-6',
-  'claude-sonnet-4-5': 'claude-sonnet-4-6',
-  'claude-3-5-sonnet': 'claude-sonnet-4-6',
-  'claude-3.5-sonnet': 'claude-sonnet-4-6',
-  'claude-3-7-sonnet': 'claude-sonnet-4-6',
-  'claude-3.7-sonnet': 'claude-sonnet-4-6',
-  'claude-3-7-sonnet-thinking': 'claude-sonnet-4-6',
-  'claude-3.7-sonnet-thinking': 'claude-sonnet-4-6',
-  'claude-haiku-4-5': 'claude-sonnet-4-6',
-  'claude-haiku': 'claude-sonnet-4-6',
-  'claude-3-haiku': 'claude-sonnet-4-6',
-  'claude-3.5-haiku': 'claude-sonnet-4-6',
-  'sonnet': 'claude-sonnet-4-6',
+  'claude-sonnet': 'claude-sonnet-5-5-high',
+  'claude-sonnet-5-5': 'claude-sonnet-5-5-high',
+  'claude-sonnet-5-5-thinking': 'claude-sonnet-5-5-high',
+  'claude-sonnet-4-6': 'claude-sonnet-5-5-high',
+  'claude-sonnet-4-5': 'claude-sonnet-5-5-high',
+  'claude-3-5-sonnet': 'claude-sonnet-5-5-high',
+  'claude-3.5-sonnet': 'claude-sonnet-5-5-high',
+  'claude-3-7-sonnet': 'claude-sonnet-5-5-high',
+  'claude-3.7-sonnet': 'claude-sonnet-5-5-high',
+  'claude-3-7-sonnet-thinking': 'claude-sonnet-5-5-high',
+  'claude-3.7-sonnet-thinking': 'claude-sonnet-5-5-high',
+  'claude-haiku-4-5': 'claude-sonnet-5-5-low',
+  'claude-haiku': 'claude-sonnet-5-5-low',
+  'claude-3-haiku': 'claude-sonnet-5-5-low',
+  'claude-3.5-haiku': 'claude-sonnet-5-5-low',
+  'sonnet': 'claude-sonnet-5-5-high',
 
   // GPT-OSS
   'gpt-oss': 'gpt-oss-120b-medium',
@@ -2868,6 +2897,8 @@ function resolveCanonicalModel(modelId) {
 
 function maxOutputTokensLimit(model) {
   const lower = model.toLowerCase()
+  const spec = LIVE_MODEL_SPECS.get(lower) ?? LIVE_MODEL_SPECS.get(model)
+  if (spec && Number.isFinite(spec.maxOutputTokens)) return spec.maxOutputTokens
   if (lower.startsWith('claude') || lower === 'opus' || lower === 'sonnet') return 64000
   if (lower.startsWith('gpt-oss-') || lower.startsWith('gpt-oss')) return 32768
   if (lower.includes('flash-image') || lower.includes('tab_flash_lite')) return 16384
@@ -3306,6 +3337,17 @@ class AntigravityAdapter extends LlmAdapter {
     this.liveModelsDerivedAt = updatedAt || Date.now()
     if (live.length > 0) {
       this.liveModels = live
+      // Feed the module-level spec table (context window / output ceiling)
+      // so clamp and context rules follow newly advertised generations
+      // (e.g. Claude 5.5: 1M context / 128K output) without code changes.
+      for (const m of cached.models) {
+        if (!isListableLiveModel(m.id)) continue
+        if (!Number.isFinite(m.contextWindow) && !Number.isFinite(m.maxOutputTokens)) continue
+        LIVE_MODEL_SPECS.set(m.id, {
+          ...(Number.isFinite(m.contextWindow) ? { contextWindow: m.contextWindow } : {}),
+          ...(Number.isFinite(m.maxOutputTokens) ? { maxOutputTokens: m.maxOutputTokens } : {}),
+        })
+      }
       // Notify the directory when the advertised set actually changes so the
       // session model catalog (cached per Host generation client-side) is
       // rebuilt — otherwise the selector keeps the cold-start catalog.
@@ -3350,18 +3392,22 @@ class AntigravityAdapter extends LlmAdapter {
   resolveModel(provider, model, _signal) {
     const connection = this.config.options()
     const live = (this.liveModels ?? []).find((entry) => entry.id === model)
+    const spec = LIVE_MODEL_SPECS.get(model.toLowerCase()) ?? LIVE_MODEL_SPECS.get(model)
     const configured = connection.models.find((entry) => entry.id === model)
     const modalities = (configured?.inputModalities !== undefined && configured.inputModalities.length > 0)
       ? configured.inputModalities
       : inputModalitiesOf(model)
-    const cw = configured?.contextWindow ?? getModelContextWindow(model, connection.enable1MMode) ?? connection.defaultContextWindow
+    const cw = configured?.contextWindow
+      ?? spec?.contextWindow
+      ?? getModelContextWindow(model, connection.enable1MMode)
+      ?? connection.defaultContextWindow
     return Promise.resolve({
       provider,
       id: model,
       name: configured?.name ?? live?.displayName ?? model,
       inputModalities: modalities,
       context: { contextWindow: cw },
-      defaultMaxTokens: configured?.maxTokens ?? connection.maxTokens,
+      defaultMaxTokens: configured?.maxTokens ?? spec?.maxOutputTokens ?? connection.maxTokens,
     })
   }
 

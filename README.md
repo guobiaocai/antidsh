@@ -19,7 +19,7 @@
 
 | 插件目录 | 插件名称 | 说明 |
 | :--- | :--- | :--- |
-| **`dsh-llm-antigravity`** | Antigravity LLM 核心驱动与看板 | Gemini 3.8 / 3.7 / 3.5 旗舰思考模型流式对话、**实时额度监控与 5h/周度滑动窗口统计**、**Token 用量与前缀缓存深度分析看板（~97% 缓存命中率）**、**多账号聚合池与智能轮换**、**第三方模型 (Claude Sonnet 4.6 / Opus 4.6 / GPT-OSS) 完美兼容与动态截断**、**原生多模态媒体解析工具 (`read_video`, `read_audio`, `read_pdf`)**、全量模型别名自动映射与 Refresh Token 状态管理 |
+| **`dsh-llm-antigravity`** | Antigravity LLM 核心驱动与看板 | Gemini 3.8 / 3.7 / 3.5 旗舰思考模型流式对话、**实时额度监控与 5h/周度滑动窗口统计**、**Token 用量与前缀缓存深度分析看板（~97% 缓存命中率）**、**多账号聚合池与智能轮换**、**第三方模型 (Claude 5.5 / GPT-OSS) 完美兼容与动态截断**、**原生多模态媒体解析工具 (`read_video`, `read_audio`, `read_pdf`)**、全量模型别名自动映射与 Refresh Token 状态管理 |
 | **`dsh-web-search-antigravity`** | Antigravity 联网搜索 | 基于 Google Grounding 的高精准实时网络信息检索提供方 |
 | **`dsh-web-search-selector`** | 搜索源选择器 | 在 WebUI 设置中无缝热切换 DeepSeek 官方搜索 / Antigravity 搜索提供方 |
 | **`dsh-image-gen-antigravity`** | Antigravity 图像生成 | 提供 `generate_image` 原生工具，基于 Gemini 3.1 Flash Image 支持 1:1, 16:9, 9:16, 4:3, 3:4 等多比例高质量文生图与图生图 |
@@ -69,8 +69,12 @@
 
 | 模型 ID (`modelId`) | 显示名称 | 默认上下文 | 1M 模式上限 | 最大输出 Tokens | 思考链 (Thinking) | 计费基准 (输入/输出/前缀缓存) | 特殊适配说明 |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
-| **`claude-sonnet-4-6`** | Claude Sonnet 4.6 (Thinking) | 160K | 250,000 | **64,000** | ✅ 1,024 预算 | $3.00 / $15.00 / $0.30 | **自动限幅 64K，支持 Function Calling `id` 透传** |
-| **`claude-opus-4-6-thinking`** | Claude Opus 4.6 (Thinking) | 160K | 250,000 | **64,000** | ✅ 1,024 预算 | $15.00 / $75.00 / $1.50 | **超强逻辑推演，自动限幅 64K，支持工具调用中继** |
+| **`claude-sonnet-5-5-high`** | Claude Sonnet 5.5 (High) | 1,000,000 | 1,000,000 | **128,000** | ✅ High 档 | 按 Anthropic 家族费率估算 | **Sonnet 5.5 旗舰（4.6 已退役，别名自动迁移）** |
+| **`claude-sonnet-5-5-medium`** | Claude Sonnet 5.5 (Medium) | 1,000,000 | 1,000,000 | **128,000** | ✅ Medium 档 | 按 Anthropic 家族费率估算 | Sonnet 5.5 中度推理 |
+| **`claude-sonnet-5-5-low`** | Claude Sonnet 5.5 (Low) | 1,000,000 | 1,000,000 | **128,000** | ✅ Low 档 | 按 Anthropic 家族费率估算 | Sonnet 5.5 轻量快答 |
+| **`claude-opus-5-5-high`** | Claude Opus 5.5 (High) | 1,000,000 | 1,000,000 | **128,000** | ✅ High 档 | 按 Anthropic 家族费率估算 | **Opus 5.5 旗舰推理，支持 Function Calling `id` 透传** |
+| **`claude-opus-5-5-medium`** | Claude Opus 5.5 (Medium) | 1,000,000 | 1,000,000 | **128,000** | ✅ Medium 档 | 按 Anthropic 家族费率估算 | Opus 5.5 中度推理 |
+| **`claude-opus-5-5-low`** | Claude Opus 5.5 (Low) | 1,000,000 | 1,000,000 | **128,000** | ✅ Low 档 | 按 Anthropic 家族费率估算 | Opus 5.5 轻量任务 |
 | **`gpt-oss-120b-medium`** | GPT-OSS 120B (Medium) | 80K | 131,072 | **32,768** | ✅ 8,192 内部预算 | $0.50 / $2.00 / $0.10 | **开源大模型，插件自动剥离 thinkingConfig 避免 400** |
 
 ---
@@ -88,9 +92,9 @@
 | `gemini-3`, `gemini-3.0-flash` | **`gemini-3-flash`** | 3.0 代通用基准 |
 | `gemini-3-pro`, `gemini-3.1-pro`, `gemini-3.1-pro-high`, `gemini-3.1-pro-low` | **`gemini-pro-agent`** | 自动收敛至 Google Pro Agent 服务 |
 | `gemini-2.5` | **`gemini-2.5-flash`** | 经典 2.5 Flash 基准 |
-| `claude-sonnet`, `claude-sonnet-4-5`, `claude-3-5-sonnet`, `claude-3.5-sonnet`, `claude-3-7-sonnet`, `claude-3.7-sonnet`, `sonnet` | **`claude-sonnet-4-6`** | 自动收敛至 Claude Sonnet 4.6 |
-| `claude-opus`, `claude-opus-4-5`, `claude-3-opus`, `claude-3-5-opus`, `opus` | **`claude-opus-4-6-thinking`** | 自动收敛至 Claude Opus 4.6 Thinking |
-| `claude-haiku`, `claude-3-haiku`, `claude-3.5-haiku` | **`claude-sonnet-4-6`** | Haiku 平滑升阶至高性能 Sonnet 4.6 |
+| `claude-sonnet`, `claude-sonnet-4-6`, `claude-sonnet-4-5`, `claude-3-5-sonnet`, `claude-3.5-sonnet`, `claude-3-7-sonnet`, `claude-3.7-sonnet`, `sonnet` | **`claude-sonnet-5-5-high`** | 自动收敛至 Claude Sonnet 5.5 High |
+| `claude-opus`, `claude-opus-4-6-thinking`, `claude-opus-4-5`, `claude-3-opus`, `claude-3-5-opus`, `opus` | **`claude-opus-5-5-high`** | 自动收敛至 Claude Opus 5.5 High |
+| `claude-haiku`, `claude-3-haiku`, `claude-3.5-haiku` | **`claude-sonnet-5-5-low`** | Haiku 平滑映射至 Sonnet 5.5 Low |
 | `gpt-oss`, `gpt-oss-120b`, `gpt-120b` | **`gpt-oss-120b-medium`** | 自动映射至 GPT-OSS 120B |
 
 ---
@@ -115,7 +119,8 @@
 - **`read_pdf`**：原生解析本地 PDF 文档排版、表格、Jupyter Notebook 与 CSV（上限 100MB）。
 
 ### 4. 🛡️ 第三方模型规整与多轮工具调用透传
-- **Token 智能限幅**：针对 Claude 模型自动截断至 `64000`，彻底避免上游因 `65536` 触发 `400 INVALID_ARGUMENT`；针对 GPT-OSS 自动限幅至 `32768`；
+- **实时规格跟随**：上下文窗口与输出上限直接采用 `fetchAvailableModels` 实时广播的硬边界（如 Claude 5.5：1M 上下文 / 128K 输出），新模型世代零代码自动适配；
+- **Token 智能限幅**：无实时规格时按家族回退（Claude `64000`、GPT-OSS `32768`），彻底避免上游 `400 INVALID_ARGUMENT`；
 - **思考参数剥离**：针对不支持思考链参数的第三方模型，智能过滤 `thinkingConfig`；
 - **工具调用 ID 透传**：完整中继 `functionCall.id` 与 `functionResponse.id`，保障复杂 Agent 场景下多轮工具调用的上下文连续性。
 
