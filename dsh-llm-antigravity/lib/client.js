@@ -479,12 +479,11 @@
 		"gemini-3.1-pro-high": { input: 2.00, output: 12.00, cache: 0.20 },
 		"gemini-3.1-pro-low": { input: 2.00, output: 12.00, cache: 0.20 },
 		"gemini-pro-agent": { input: 2.00, output: 12.00, cache: 0.20 },
-		// Gemini 4 Argon (separate weekly quota group; provisional Pro-tier anchor
-		// until Google publishes official rates)
-		"gemini-4-argon-high": { input: 2.00, output: 12.00, cache: 0.20 },
-		"gemini-4-argon-medium": { input: 2.00, output: 12.00, cache: 0.20 },
-		"gemini-4-argon-low": { input: 2.00, output: 12.00, cache: 0.20 },
-		"gemini-4-argon": { input: 2.00, output: 12.00, cache: 0.20 },
+		// Gemini 4 Argon (separate weekly quota group)
+		"gemini-4-argon-high": { input: 2.00, output: 10.00, cache: 0.10 },
+		"gemini-4-argon-medium": { input: 2.00, output: 10.00, cache: 0.10 },
+		"gemini-4-argon-low": { input: 2.00, output: 10.00, cache: 0.10 },
+		"gemini-4-argon": { input: 2.00, output: 10.00, cache: 0.10 },
 		"claude-sonnet-4-6": { input: 3.00, output: 15.00, cache: 0.30 },
 		"claude-sonnet": { input: 3.00, output: 15.00, cache: 0.30 },
 		"claude-opus-4-6-thinking": { input: 15.00, output: 75.00, cache: 1.50 },
@@ -498,9 +497,8 @@
 	function getFallbackPricing(modelId) {
 		const m = (modelId || "").toLowerCase();
 		if (m.includes("4-argon")) {
-			// Gemini 4 Argon family: separate weekly quota group; provisional
-			// Pro-tier anchor until Google publishes official rates.
-			return { input: 2.00, output: 12.00, cache: 0.20 };
+			// Gemini 4 Argon family: separate weekly quota group.
+			return { input: 2.00, output: 10.00, cache: 0.10 };
 		}
 		if (m.includes("3.7-flash") || m.includes("3.8-flash")) {
 			return { input: 0.75, output: 3.75, cache: 0.075 };
