@@ -3182,6 +3182,22 @@ async function httpError(response, context) {
 // ---------------------------------------------------------------------------
 // Adapter
 // ---------------------------------------------------------------------------
+
+/**
+ * Whether a live `fetchAvailableModels` entry may be offered as a provider
+ * model: keep the gemini / claude / gpt chat families, drop image generation
+ * models (e.g. gemini-3.1-flash-image) and entries Google marks as disabled
+ * (e.g. gemini-4-argon-disabled). Internal placeholders (chat_* / tab_*) are
+ * already excluded by the family prefix.
+ */
+const LIVE_MODEL_FAMILY = /^(gemini|claude|gpt)[-.]/i
+function isListableLiveModel(id) {
+  return typeof id === 'string'
+    && LIVE_MODEL_FAMILY.test(id)
+    && !/image/i.test(id)
+    && !/-disabled$/i.test(id)
+}
+
 class AntigravityAdapter extends LlmAdapter {
   constructor(config, usageTracker, quotaService, quotaReporter, scheduler) {
     super()
@@ -3195,6 +3211,7 @@ class AntigravityAdapter extends LlmAdapter {
     this.project = undefined
     this.projectAccessToken = undefined
     this.lastRefreshToken = undefined
+    this.lastLiveModels = undefined
   }
 
   resetRuntimeState() {
@@ -3221,20 +3238,56 @@ class AntigravityAdapter extends LlmAdapter {
     return this.config.options().retryPolicy
   }
 
-  listModels(provider) {
-    return Promise.resolve(this.config.options().models.map((model) => ({
+  /**
+   * Provider model list synced with the quota panel's live model listing
+   * (fetchAvailableModels — the same source the quota dashboard renders).
+   * Only the gemini / claude / gpt chat families are offered; image
+   * generation models (e.g. gemini-3.1-flash-image) and entries Google
+   * marks as disabled are excluded. Falls back to the configured catalog
+   * when the live listing is unavailable.
+   */
+  async listModels(provider) {
+    const options = this.config.options()
+    const mapEntry = (id, name, description) => ({
       provider,
-      id: model.id,
-      name: model.name ?? model.id,
-      ...(model.description === undefined ? {} : { description: model.description }),
-      inputModalities: (model.inputModalities !== undefined && model.inputModalities.length > 0)
-        ? model.inputModalities
-        : inputModalitiesOf(model.id),
-    })))
+      id,
+      name: name ?? id,
+      ...(description === undefined ? {} : { description }),
+      inputModalities: inputModalitiesOf(id),
+    })
+    const fallback = () => options.models.map((model) => mapEntry(model.id, model.name ?? model.id, model.description))
+    try {
+      const accessToken = await this.ensureAccessToken()
+      const project = await this.ensureProject(accessToken)
+      const quota = await Promise.race([
+        this.quotaService?.getQuota(accessToken, options.baseURL, project, false, this.getActiveProxy()),
+        new Promise((resolve) => setTimeout(() => resolve(null), 4000)),
+      ])
+      const liveModels = (quota?.models ?? [])
+        .map((m) => ({ id: m.id, displayName: m.displayName }))
+        .filter((m) => isListableLiveModel(m.id))
+      if (liveModels.length > 0) {
+        this.lastLiveModels = liveModels
+        return liveModels.map((m) => {
+          const known = options.models.find((entry) => entry.id === m.id)
+          return mapEntry(m.id, known?.name ?? m.displayName, known?.description)
+        })
+      }
+      if (this.lastLiveModels && this.lastLiveModels.length > 0) {
+        return this.lastLiveModels.map((m) => {
+          const known = options.models.find((entry) => entry.id === m.id)
+          return mapEntry(m.id, known?.name ?? m.displayName, known?.description)
+        })
+      }
+    } catch {
+      // No usable credential or upstream hiccup: serve the catalog silently.
+    }
+    return fallback()
   }
 
   resolveModel(provider, model, _signal) {
     const connection = this.config.options()
+    const live = (this.lastLiveModels ?? []).find((entry) => entry.id === model)
     const configured = connection.models.find((entry) => entry.id === model)
     const modalities = (configured?.inputModalities !== undefined && configured.inputModalities.length > 0)
       ? configured.inputModalities
@@ -3243,7 +3296,7 @@ class AntigravityAdapter extends LlmAdapter {
     return Promise.resolve({
       provider,
       id: model,
-      name: configured?.name ?? model,
+      name: configured?.name ?? live?.displayName ?? model,
       inputModalities: modalities,
       context: { contextWindow: cw },
       defaultMaxTokens: configured?.maxTokens ?? connection.maxTokens,
