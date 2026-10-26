@@ -3216,6 +3216,8 @@ class AntigravityAdapter extends LlmAdapter {
     this.liveModels = undefined
     this.liveModelsDerivedAt = 0
     this.liveModelsRefresh = null
+    this.liveModelsSignature = ''
+    this.onModelsUpdated = null
   }
 
   resetRuntimeState() {
@@ -3299,6 +3301,18 @@ class AntigravityAdapter extends LlmAdapter {
     this.liveModelsDerivedAt = updatedAt || Date.now()
     if (live.length > 0) {
       this.liveModels = live
+      // Notify the directory when the advertised set actually changes so the
+      // session model catalog (cached per Host generation client-side) is
+      // rebuilt — otherwise the selector keeps the cold-start catalog.
+      const signature = live.map((m) => m.id).join(',')
+      if (signature !== this.liveModelsSignature) {
+        this.liveModelsSignature = signature
+        try {
+          this.onModelsUpdated?.()
+        } catch (error) {
+          console.warn('llm-antigravity: onModelsUpdated callback failed:', error?.message ?? error)
+        }
+      }
       return true
     }
     return false
@@ -4177,6 +4191,16 @@ function apply(ctx, config) {
     if (deepEqualJson(policy, registeredPolicy)) return
     registration.replace([PROVIDER])
     registeredPolicy = policy
+  }
+  // When the background live-model refresh changes the advertised set,
+  // re-commit the adapter so the llm directory emits `llm/adapters-updated`
+  // and the session model catalog (cached per Host generation) is rebuilt.
+  adapter.onModelsUpdated = () => {
+    try {
+      registration.replace([PROVIDER])
+    } catch (error) {
+      ctx.logger?.warn?.('llm-antigravity: live-model re-registration failed', error)
+    }
   }
   // DSH 0.2.x: the settings service auto-generates the plugin settings page
   // from the volatile subset of Config; live edits land through this event.
