@@ -2261,6 +2261,104 @@ function isGemini3Flash(model) {
   return lower.includes('gemini-3') && lower.includes('flash')
 }
 
+/** Is the model served through the Anthropic Vertex translation layer? */
+function isAnthropicModel(model) {
+  return typeof model === 'string' && model.toLowerCase().startsWith('claude')
+}
+
+/**
+ * Normalize the tool-call wire for Anthropic-Vertex models (Claude). The
+ * upstream translation layer rejects a history where any `tool_use` lacks a
+ * `tool_result` block in the immediately next message, and every
+ * `functionResponse` must carry the id of its call (probes: dangling calls →
+ * 400 `tool_use ids were found without tool_result blocks`; response without
+ * id → 400 `tool_result.tool_use_id: Field required`; parallel model-role
+ * responses → 200 OK).
+ *
+ * Re-emit every call's responses as ONE user content directly after the call
+ * content, synthesizing a response for calls whose execution never recorded
+ * one (interrupted or failed turns), backfilling missing ids, and converting
+ * orphan responses (no matching call) into plain text so no tool_result
+ * dangles.
+ */
+function normalizeAnthropicToolWire(wire) {
+  if (!Array.isArray(wire) || wire.length === 0) return wire
+  const consumed = new Set()
+  const responseFor = new Map()
+  for (let i = 0; i < wire.length; i++) {
+    const content = wire[i]
+    if (content.role !== 'model' || !Array.isArray(content.parts)) continue
+    const callParts = content.parts.filter((p) => p.functionCall !== undefined)
+    for (let c = 0; c < callParts.length; c++) {
+      const callPart = callParts[c]
+      const call = callPart.functionCall
+      if (typeof call.id !== 'string' || call.id.length === 0) call.id = `call_${i}_${c}`
+      let found
+      for (let j = i + 1; j < wire.length && found === undefined; j++) {
+        const later = wire[j]
+        if (!Array.isArray(later.parts)) continue
+        for (const part of later.parts) {
+          if (part.functionResponse === undefined || consumed.has(part)) continue
+          const fr = part.functionResponse
+          const idMatch = typeof fr.id === 'string' && fr.id.length > 0 && fr.id === call.id
+          const nameMatch = (typeof fr.id !== 'string' || fr.id.length === 0) && fr.name === call.name
+          if (idMatch || nameMatch) {
+            found = part
+            break
+          }
+        }
+      }
+      if (found !== undefined) {
+        consumed.add(found)
+        // The translator emits tool_result.tool_use_id from this id — a
+        // response missing it would 400 (`tool_use_id: Field required`).
+        if (typeof found.functionResponse.id !== 'string' || found.functionResponse.id.length === 0) {
+          found.functionResponse.id = call.id
+        }
+        responseFor.set(callPart, found)
+      } else {
+        responseFor.set(callPart, {
+          functionResponse: {
+            id: call.id,
+            name: call.name,
+            response: { result: '(tool execution failed or was interrupted before a result was recorded)' },
+          },
+        })
+      }
+    }
+  }
+  const out = []
+  for (const content of wire) {
+    if (content.role === 'model' && Array.isArray(content.parts)) {
+      const callParts = content.parts.filter((p) => p.functionCall !== undefined && responseFor.has(p))
+      if (callParts.length > 0) {
+        out.push(content)
+        out.push({ role: 'user', parts: callParts.map((p) => responseFor.get(p)) })
+        continue
+      }
+    }
+    if (Array.isArray(content.parts)) {
+      const parts = []
+      for (const part of content.parts) {
+        if (consumed.has(part)) continue
+        if (part.functionResponse !== undefined && !responseFor.has(part)) {
+          // Orphan response (its call is not in this history): degrade to
+          // text so no tool_result dangles without a tool_use.
+          const result = part.functionResponse?.response?.result
+          parts.push({ text: `[tool result] ${typeof result === 'string' ? result : JSON.stringify(result ?? '')}` })
+          continue
+        }
+        parts.push(part)
+      }
+      if (parts.length === 0) continue
+      out.push({ ...content, parts })
+      continue
+    }
+    out.push(content)
+  }
+  return out
+}
+
 /** Default input modalities by family; catalog entries may override. */
 function inputModalitiesOf(modelId) {
   const lower = modelId.toLowerCase()
@@ -2755,6 +2853,9 @@ async function serializeMessages(messages, sessionId, model, attachments) {
     }
     if (parts.length > 0) wire.push({ role: 'user', parts })
   }
+  // Anthropic-Vertex (Claude): the translation layer pairs tool_use with
+  // tool_result positionally — normalize dangling/unpaired tool rounds.
+  if (isAnthropicModel(model)) return normalizeAnthropicToolWire(wire)
   return wire
 }
 
