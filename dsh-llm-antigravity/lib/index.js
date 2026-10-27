@@ -3102,15 +3102,25 @@ async function* parseSse(body) {
   }
 }
 
+/**
+ * Gemini output-filter finish reasons that cut a response early but leave the
+ * session usable. Mapping them to a graceful stop (with a visible note) keeps
+ * the agent loop alive — a hard failure would abort the whole run and replay
+ * the same blocked round on every retry.
+ */
+const SOFT_STOP_FILTERS = new Set(['SAFETY', 'RECITATION'])
+
 /** Map Gemini finish_reason to the harness FinishReason. */
 function mapFinishReason(reason) {
   switch (reason) {
     case 'STOP': return { kind: 'stop' }
     case 'MAX_TOKENS': return { kind: 'max-tokens' }
-    default: return {
-      kind: 'error',
-      failure: { message: `model stopped: ${reason}`, code: reason.toUpperCase() },
-    }
+    default:
+      if (SOFT_STOP_FILTERS.has(reason)) return { kind: 'stop', filterStop: reason }
+      return {
+        kind: 'error',
+        failure: { message: `model stopped: ${reason}`, code: reason.toUpperCase() },
+      }
   }
 }
 
@@ -3249,6 +3259,18 @@ async function* translate(payloads, sessionId, onUsage) {
         }
       }
     }
+  }
+
+  // Output-filter soft stops (SAFETY / RECITATION): surface a visible note
+  // and complete the turn normally instead of failing the whole run — the
+  // filter is frequently transient on agent-length outputs.
+  const filterStop = pendingFinish?.filterStop
+  if (filterStop !== undefined) {
+    const noteBlock = open('text')
+    yield { type: 'block-start', index: noteBlock.index, blockType: 'text' }
+    const note = `（模型安全过滤器（${filterStop}）提前终止了本轮输出，本回合内容未完整生成。可重试或调整输入后继续。）`
+    noteBlock.text = note
+    yield { type: 'text-delta', index: noteBlock.index, text: note }
   }
 
   for (const block of order) yield { type: 'block-end', index: block.index, block: closeBlock(block) }
